@@ -49,6 +49,8 @@ examples/dashboard.yaml
 4. Copy the contents of `examples/dashboard.yaml`
 5. Adjust entity IDs to match your setup
 
+![Dashboard example](images/Screenshot_SGTC.png)
+
 ## Support
 
 - Issues: https://github.com/ferreirajcsf/small-grow-tent-controller/issues
