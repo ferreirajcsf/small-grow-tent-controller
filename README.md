@@ -33,6 +33,22 @@ Go to **Settings → Devices & services → Add integration** and search for:
 
 Follow the wizard.
 
+## Example Dashboard
+
+This repository includes an example Lovelace dashboard for the
+Small Grow Tent Controller integration.
+
+📁 Location:
+examples/dashboard.yaml
+
+### How to use
+
+1. Open Home Assistant
+2. Go to **Settings → Dashboards**
+3. Add a **YAML dashboard**
+4. Copy the contents of `examples/dashboard.yaml`
+5. Adjust entity IDs to match your setup
+
 ## Support
 
 - Issues: https://github.com/ferreirajcsf/small-grow-tent-controller/issues
