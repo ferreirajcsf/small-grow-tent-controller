@@ -1,0 +1,10 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Small Grow Tent Controller",
+        "description": "Select the entities to use (entity_id based)."
+      }
+    }
+  }
+}
