@@ -41,6 +41,13 @@ Small Grow Tent Controller integration.
 📁 Location:
 examples/dashboard.yaml
 
+### Requirements
+This dashboard uses the following custom cards (install via HACS):
+- layout-card (with grid-layout)
+- Mushroom cards
+- button-card
+- card-mod
+
 ### How to use
 
 1. Open Home Assistant
