@@ -1,14 +1,20 @@
 # Small Grow Tent Controller (Home Assistant Integration)
 
-[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
-[![Latest Release](https://img.shields.io/github/v/release/ferreirajcsf/small-grow-tent-controller)](https://github.com/ferreirajcsf/small-grow-tent-controller/releases)
-[![License](https://img.shields.io/github/license/ferreirajcsf/small-grow-tent-controller)](LICENSE)
-
----
-
+<!-- ===================== -->
+<!-- BADGES (PRIVATE REPO) -->
+<!-- Works while the repository is private -->
 [![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
 [![Version](https://img.shields.io/badge/version-v0.1.2-blue.svg)](https://github.com/ferreirajcsf/small-grow-tent-controller/releases)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+
+<!-- ===================== -->
+<!-- BADGES (PUBLIC REPO) -->
+<!-- Uncomment these and remove the PRIVATE block when you make the repo public -->
+<!--
+[![HACS](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
+[![Latest Release](https://img.shields.io/github/v/release/ferreirajcsf/small-grow-tent-controller)](https://github.com/ferreirajcsf/small-grow-tent-controller/releases)
+[![License](https://img.shields.io/github/license/ferreirajcsf/small-grow-tent-controller)](LICENSE)
+-->
 
 A Home Assistant custom integration to control and monitor a small grow tent using simple **on/off control logic**.
 
