@@ -1,4 +1,5 @@
 {
   "name": "Small Grow Tent Controller",
-  "content_in_root": true
+  "content_in_root": false,
+  "domain": "small_grow_tent_controller"
 }
