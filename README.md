@@ -56,7 +56,7 @@ This dashboard uses the following custom cards (install via HACS):
 4. Copy the contents of `examples/dashboard.yaml`
 5. Adjust entity IDs to match your setup
 
-![Dashboard example](images/Screenshot_SGTC.png)
+![Dashboard example](images/Screenshot_GTC.png)
 
 ## Support
 
