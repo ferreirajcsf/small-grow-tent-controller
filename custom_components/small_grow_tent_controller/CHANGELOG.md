@@ -4,6 +4,18 @@
 
 All notable changes to this project will be documented in this file.
 
+# Changelog
+
+## v0.1.4
+- Added per-instance service targeting using device selectors
+- Introduced refresh, set_stage, and set_enabled services
+- Improved multi-grow-tent architecture
+
+## v0.1.3
+- Added support for multiple grow tents / rooms
+- Config flow now supports naming each instance
+- Entities grouped per device
+
 
 
 \## \[0.1.2] - 2026-02-16
@@ -33,6 +45,7 @@ All notable changes to this project will be documented in this file.
 \- Home Assistant custom integration
 
 \- HACS-ready repository structure
+
 
 
 
