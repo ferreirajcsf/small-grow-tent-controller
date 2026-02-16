@@ -44,7 +44,7 @@ That said, the integration is actively used, functional, and shared for anyone w
 
 ## Installation
 
-###> **Private repository note**
+**Private repository note**
 >
 > This integration is hosted in a private GitHub repository.
 > When installing via HACS, the GitHub account used by HACS must:
