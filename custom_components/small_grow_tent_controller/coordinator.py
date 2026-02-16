@@ -19,6 +19,8 @@ from .const import (
     CONF_CIRC_SWITCH,
     CONF_EXHAUST_SWITCH,
     CONF_HEATER_SWITCH,
+    CONF_HUMIDIFIER_SWITCH,
+    CONF_DEHUMIDIFIER_SWITCH,
     CONF_CANOPY_TEMP,
     CONF_TOP_TEMP,
     CONF_CANOPY_RH,
@@ -48,6 +50,8 @@ class ControlState:
     last_heater_change: datetime | None = None
     last_exhaust_change: datetime | None = None
     last_light_change: datetime | None = None
+    last_humidifier_change: datetime | None = None
+    last_dehumidifier_change: datetime | None = None
 
     # Heater pulse control
     heater_pulse_until: datetime | None = None
@@ -180,12 +184,16 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         heater_hold: float = data.get("heater_hold_s", 60.0)
         exhaust_hold: float = data.get("exhaust_hold_s", 45.0)
+        humidifier_hold: float = data.get("humidifier_hold_s", exhaust_hold)
+        dehumidifier_hold: float = data.get("dehumidifier_hold_s", exhaust_hold)
 
         # Controlled device entity ids (from config options)
         light_eid = self._get_option(CONF_LIGHT_SWITCH)
         circ_eid = self._get_option(CONF_CIRC_SWITCH)
         exhaust_eid = self._get_option(CONF_EXHAUST_SWITCH)
         heater_eid = self._get_option(CONF_HEATER_SWITCH)
+        humidifier_eid = self._get_option(CONF_HUMIDIFIER_SWITCH)
+        dehumidifier_eid = self._get_option(CONF_DEHUMIDIFIER_SWITCH)
 
         now = self._now()
         now_t = dt_util.as_local(now).time()
@@ -259,6 +267,8 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Current device states
         heater_on = self._switch_is_on(heater_eid) is True
         exhaust_on = self._switch_is_on(exhaust_eid) is True
+        humidifier_on = self._switch_is_on(humidifier_eid) is True
+        dehumidifier_on = self._switch_is_on(dehumidifier_eid) is True
 
         # ----------------------------
         # HEATER SAFETY: max continuous run time
@@ -388,6 +398,18 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ):
                     await self._async_switch(heater_eid, False)
                     self.control.last_heater_change = now
+                # Humidity devices
+                if humidifier_on and humidifier_eid and self._can_toggle(self.control.last_humidifier_change, humidifier_hold):
+                    await self._async_switch(humidifier_eid, False)
+                    self.control.last_humidifier_change = now
+                    humidifier_on = False
+                if (not dehumidifier_on) and dehumidifier_eid and self._can_toggle(
+                    self.control.last_dehumidifier_change, dehumidifier_hold
+                ):
+                    await self._async_switch(dehumidifier_eid, True)
+                    self.control.last_dehumidifier_change = now
+                    dehumidifier_on = True
+
                 data["debug_heater_reason"] = "drying: rh_above_max -> heater_off"
                 data["debug_exhaust_reason"] = "drying: rh_above_max -> exhaust_on"
                 return data
@@ -401,6 +423,20 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ):
                     await self._async_switch(heater_eid, False)
                     self.control.last_heater_change = now
+                # Humidity devices
+                if dehumidifier_on and dehumidifier_eid and self._can_toggle(
+                    self.control.last_dehumidifier_change, dehumidifier_hold
+                ):
+                    await self._async_switch(dehumidifier_eid, False)
+                    self.control.last_dehumidifier_change = now
+                    dehumidifier_on = False
+                if (not humidifier_on) and humidifier_eid and self._can_toggle(
+                    self.control.last_humidifier_change, humidifier_hold
+                ):
+                    await self._async_switch(humidifier_eid, True)
+                    self.control.last_humidifier_change = now
+                    humidifier_on = True
+
                 data["debug_heater_reason"] = "drying: rh_below_min -> heater_off"
                 data["debug_exhaust_reason"] = "drying: rh_below_min -> exhaust_off"
                 return data
@@ -434,6 +470,29 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 exhaust_mode = "on"
 
             data["control_mode"] = f"night_{exhaust_mode}_dewpoint_protect"
+
+            # Humidity devices at night:
+            # - humidifier is forced OFF to avoid adding moisture during dewpoint protection
+            # - dehumidifier may run if RH is above max_rh
+            if humidifier_on and humidifier_eid and self._can_toggle(self.control.last_humidifier_change, humidifier_hold):
+                await self._async_switch(humidifier_eid, False)
+                self.control.last_humidifier_change = now
+                humidifier_on = False
+                data["debug_humidifier_reason"] = "night: force_off"
+            if (avg_rh > max_rh) and (not dehumidifier_on) and dehumidifier_eid and self._can_toggle(
+                self.control.last_dehumidifier_change, dehumidifier_hold
+            ):
+                await self._async_switch(dehumidifier_eid, True)
+                self.control.last_dehumidifier_change = now
+                dehumidifier_on = True
+                data["debug_dehumidifier_reason"] = "night: rh_above_max -> on"
+            elif (avg_rh <= max_rh) and dehumidifier_on and dehumidifier_eid and self._can_toggle(
+                self.control.last_dehumidifier_change, dehumidifier_hold
+            ):
+                await self._async_switch(dehumidifier_eid, False)
+                self.control.last_dehumidifier_change = now
+                dehumidifier_on = False
+                data["debug_dehumidifier_reason"] = "night: rh_ok -> off"
 
             # Heater dewpoint protection with soft pulsing
             target_temp = dew + dew_margin_night
@@ -606,6 +665,20 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ):
                     await self._async_switch(heater_eid, False)
                     self.control.last_heater_change = now
+                # Humidity devices
+                if humidifier_on and humidifier_eid and self._can_toggle(
+                    self.control.last_humidifier_change, humidifier_hold
+                ):
+                    await self._async_switch(humidifier_eid, False)
+                    self.control.last_humidifier_change = now
+                    humidifier_on = False
+                if (not dehumidifier_on) and dehumidifier_eid and self._can_toggle(
+                    self.control.last_dehumidifier_change, dehumidifier_hold
+                ):
+                    await self._async_switch(dehumidifier_eid, True)
+                    self.control.last_dehumidifier_change = now
+                    dehumidifier_on = True
+
 
             elif hard_limit == "rh_below_min":
                 if (
@@ -621,6 +694,20 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ):
                     await self._async_switch(heater_eid, False)
                     self.control.last_heater_change = now
+                # Humidity devices
+                if dehumidifier_on and dehumidifier_eid and self._can_toggle(
+                    self.control.last_dehumidifier_change, dehumidifier_hold
+                ):
+                    await self._async_switch(dehumidifier_eid, False)
+                    self.control.last_dehumidifier_change = now
+                    dehumidifier_on = False
+                if (not humidifier_on) and humidifier_eid and self._can_toggle(
+                    self.control.last_humidifier_change, humidifier_hold
+                ):
+                    await self._async_switch(humidifier_eid, True)
+                    self.control.last_humidifier_change = now
+                    humidifier_on = True
+
 
             return data
 
@@ -633,7 +720,25 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         high = target_vpd + deadband
 
         if vpd < low:
-            # raise VPD: heat if temp headroom, else exhaust if RH headroom
+            # Too humid (low VPD): dehumidify first (if available), otherwise fall back to heat/exhaust.
+            if (not dehumidifier_on) and dehumidifier_eid and self._can_toggle(
+                self.control.last_dehumidifier_change, dehumidifier_hold
+            ):
+                await self._async_switch(dehumidifier_eid, True)
+                self.control.last_dehumidifier_change = now
+                dehumidifier_on = True
+                data["debug_dehumidifier_reason"] = "vpd_low -> on"
+
+            # Never run humidifier while trying to raise VPD
+            if humidifier_on and humidifier_eid and self._can_toggle(
+                self.control.last_humidifier_change, humidifier_hold
+            ):
+                await self._async_switch(humidifier_eid, False)
+                self.control.last_humidifier_change = now
+                humidifier_on = False
+                data["debug_humidifier_reason"] = "vpd_low -> off"
+
+            # Existing strategy: heat if temp headroom, else exhaust if RH headroom
             if avg_temp < (max_temp - 0.2):
                 if (
                     (not heater_on)
@@ -662,7 +767,22 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     self.control.last_exhaust_change = now
 
         elif vpd > high:
-            # cannot humidify: stop drying forces
+            # Too dry (high VPD): humidify (if available) and stop drying forces.
+            if dehumidifier_on and dehumidifier_eid and self._can_toggle(
+                self.control.last_dehumidifier_change, dehumidifier_hold
+            ):
+                await self._async_switch(dehumidifier_eid, False)
+                self.control.last_dehumidifier_change = now
+                dehumidifier_on = False
+
+            if (not humidifier_on) and humidifier_eid and self._can_toggle(
+                self.control.last_humidifier_change, humidifier_hold
+            ):
+                await self._async_switch(humidifier_eid, True)
+                self.control.last_humidifier_change = now
+                humidifier_on = True
+                data["debug_humidifier_reason"] = "vpd_high -> on"
+
             if heater_on and heater_eid and self._can_toggle(self.control.last_heater_change, heater_hold):
                 await self._async_switch(heater_eid, False)
                 self.control.last_heater_change = now
@@ -676,7 +796,20 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.control.last_exhaust_change = now
 
         else:
-            # in band: stable
+            # In band: stable (neutralize).
+            if humidifier_on and humidifier_eid and self._can_toggle(
+                self.control.last_humidifier_change, humidifier_hold
+            ):
+                await self._async_switch(humidifier_eid, False)
+                self.control.last_humidifier_change = now
+                humidifier_on = False
+            if dehumidifier_on and dehumidifier_eid and self._can_toggle(
+                self.control.last_dehumidifier_change, dehumidifier_hold
+            ):
+                await self._async_switch(dehumidifier_eid, False)
+                self.control.last_dehumidifier_change = now
+                dehumidifier_on = False
+
             if heater_on and heater_eid and self._can_toggle(self.control.last_heater_change, heater_hold):
                 await self._async_switch(heater_eid, False)
                 self.control.last_heater_change = now
@@ -725,6 +858,8 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         dew_margin_eid = self._entity_id("number", "dewpoint_margin_c")
         heater_hold_eid = self._entity_id("number", "heater_hold_s")
         exhaust_hold_eid = self._entity_id("number", "exhaust_hold_s")
+        humidifier_hold_eid = self._entity_id("number", "humidifier_hold_s")
+        dehumidifier_hold_eid = self._entity_id("number", "dehumidifier_hold_s")
 
         # NEW: heater max run time number
         heater_max_run_eid = self._entity_id("number", "heater_max_run_s")
@@ -765,6 +900,8 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "dewpoint_margin_c": self._num(dew_margin_eid, 1.0),
             "heater_hold_s": self._num(heater_hold_eid, 60.0),
             "exhaust_hold_s": self._num(exhaust_hold_eid, 45.0),
+            "humidifier_hold_s": self._num(humidifier_hold_eid, 45.0),
+            "dehumidifier_hold_s": self._num(dehumidifier_hold_eid, 45.0),
 
             # NEW: user adjustable max run time (0 disables)
             "heater_max_run_s": self._num(heater_max_run_eid, 0.0),

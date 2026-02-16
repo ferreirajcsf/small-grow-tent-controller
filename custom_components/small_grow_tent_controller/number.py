@@ -18,6 +18,8 @@ NUMBERS = [
     ("heater_hold_s", "Heater Hold Time", 10.0, 600.0, 5.0, 60.0, "s"),
     ("heater_max_run_s", "Heater Max Run Time", 0.0, 600.0, 5.0, 0.0, "s"),
     ("exhaust_hold_s", "Exhaust Hold Time", 10.0, 600.0, 5.0, 45.0, "s"),
+    ("humidifier_hold_s", "Humidifier Hold Time", 10.0, 600.0, 5.0, 45.0, "s"),
+    ("dehumidifier_hold_s", "Dehumidifier Hold Time", 10.0, 600.0, 5.0, 45.0, "s"),
     ("leaf_temp_offset_c", "Leaf Temp Offset", -5.0, 5.0, 0.1, -1.5, "°C"),
 ]
 
