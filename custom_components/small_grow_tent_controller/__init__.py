@@ -9,7 +9,6 @@ from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers import device_registry as dr
 from homeassistant.helpers import entity_registry as er
-from homeassistant.helpers.service import async_extract_from_service
 
 from .const import DOMAIN, PLATFORMS, STAGE_TARGET_VPD_KPA
 from .coordinator import GrowTentCoordinator
@@ -25,9 +24,10 @@ def _service_coordinators(hass: HomeAssistant, call) -> list[GrowTentCoordinator
     Supports target.device_id / target.entity_id / target.area_id.
     If no explicit targets are provided, returns all coordinators.
     """
-    target = async_extract_from_service(call)
-    device_ids = target.device_ids or []
-    entity_ids = target.entity_ids or []
+    target = getattr(call, "target", None)
+    device_ids = list(getattr(target, "device_ids", []) or [])
+    entity_ids = list(getattr(target, "entity_ids", []) or [])
+    area_ids = list(getattr(target, "area_ids", []) or [])
 
     coordinators: dict[str, GrowTentCoordinator] = {}
 
@@ -44,6 +44,18 @@ def _service_coordinators(hass: HomeAssistant, call) -> list[GrowTentCoordinator
                     if c is not None:
                         coordinators[ident] = c
 
+
+    # 1b) area targets -> devices in those areas
+    if area_ids:
+        dev_reg = dr.async_get(hass)
+        for device in dev_reg.devices.values():
+            if device.area_id and device.area_id in area_ids:
+                for ident_domain, ident in device.identifiers:
+                    if ident_domain == DOMAIN and ident in hass.data.get(DOMAIN, {}):
+                        c = hass.data[DOMAIN].get(ident)
+                        if c is not None:
+                            coordinators[ident] = c
+
     # 2) entity targets
     if entity_ids:
         ent_reg = er.async_get(hass)
@@ -56,7 +68,7 @@ def _service_coordinators(hass: HomeAssistant, call) -> list[GrowTentCoordinator
                 coordinators[ent.config_entry_id] = c
 
     # 3) no explicit target -> all instances
-    if not coordinators and not device_ids and not entity_ids:
+    if not coordinators and not device_ids and not entity_ids and not area_ids:
         for entry_id, c in hass.data.get(DOMAIN, {}).items():
             if isinstance(c, GrowTentCoordinator):
                 coordinators[entry_id] = c
