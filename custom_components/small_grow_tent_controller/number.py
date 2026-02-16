@@ -7,6 +7,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
+from .device import device_info_for_entry
 
 NUMBERS = [
     ("min_temp_c", "Min Temperature", 10.0, 35.0, 0.1, 20.0, "°C"),
@@ -37,6 +38,7 @@ class GrowNumber(NumberEntity):
         self.key = key
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_name = name
+        self._attr_device_info = device_info_for_entry(entry)
         self._attr_native_min_value = min_v
         self._attr_native_max_value = max_v
         self._attr_native_step = step

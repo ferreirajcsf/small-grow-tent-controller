@@ -1,5 +1,9 @@
 DOMAIN = "small_grow_tent_controller"
 
+# User-facing instance name (supports multiple tents / rooms)
+CONF_NAME = "name"
+DEFAULT_NAME = "Grow Tent"
+
 PLATFORMS = ["sensor", "switch", "select", "number", "time"]
 
 # Fixed entity-id option keys
@@ -17,6 +21,7 @@ CONF_TOP_RH = "top_rh"
 
 # Defaults (your entities)
 DEFAULTS = {
+    CONF_NAME: DEFAULT_NAME,
     CONF_LIGHT_SWITCH: "switch.lightgrowtent",
     CONF_CIRC_SWITCH: "switch.ventilationgrowtent",  # you called this circulation/ventilation
     CONF_EXHAUST_SWITCH: "switch.exhaustgrowtent",

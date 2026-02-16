@@ -7,6 +7,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN, DEFAULT_STAGE, STAGE_TARGET_VPD_KPA
+from .device import device_info_for_entry
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
     async_add_entities([StageSelect(hass, entry)])
@@ -19,6 +20,7 @@ class StageSelect(SelectEntity):
         self.entry = entry
         self._attr_unique_id = f"{entry.entry_id}_stage"
         self._attr_name = "Stage"
+        self._attr_device_info = device_info_for_entry(entry)
         self._attr_options = list(STAGE_TARGET_VPD_KPA.keys())
         self._current = DEFAULT_STAGE
         self.store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_stage")
