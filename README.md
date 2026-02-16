@@ -44,6 +44,17 @@ That said, the integration is actively used, functional, and shared for anyone w
 
 ## Installation
 
+###> **Private repository note**
+>
+> This integration is hosted in a private GitHub repository.
+> When installing via HACS, the GitHub account used by HACS must:
+>
+> - Have access to this repository, and
+> - Grant the HACS GitHub App permission to access the repository.
+>
+> Manual installation is recommended for personal or private use.
+
+
 ### Option A — HACS (custom repository)
 
 1. In Home Assistant, open **HACS → Integrations**
