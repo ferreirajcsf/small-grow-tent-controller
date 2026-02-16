@@ -47,7 +47,7 @@ views:
               grid-area: small
             cards:
               - type: custom:mushroom-title-card
-                title: Small Grow Tent
+                title: Grow Tent
                 alignment: center
               - type: custom:button-card
                 show_icon: false
@@ -113,33 +113,27 @@ views:
                         <span> • Stage: ${stage}</span>
                       `;
                     ]]]
-              - type: custom:mushroom-chips-card
-                alignment: justify
-                chips:
-                  - type: entity
+              - type: custom:layout-card
+                layout_type: grid
+                layout:
+                  grid-template-columns: repeat(2, 1fr)
+                  grid-auto-rows: 116px
+                  grid-column-gap: 12px
+                cards:
+                  - type: custom:mushroom-entity-card
                     entity: switch.controller
-                    icon: mdi:robot
                     name: Controller
-                    content_info: name
+                    icon: mdi:robot
                     tap_action:
                       action: toggle
-                  - type: entity
+                    fill_container: true
+                  - type: custom:mushroom-entity-card
                     entity: select.stage
-                    icon: mdi:sprout
                     name: Stage
-                    content_info: name
+                    icon: mdi:sprout
                     tap_action:
                       action: more-info
-                  - type: entity
-                    entity: sensor.vpd
-                    icon: mdi:chart-bell-curve-cumulative
-                    name: VPD
-                    content_info: state
-                  - type: entity
-                    entity: sensor.dew_point
-                    icon: mdi:weather-fog
-                    name: Dew
-                    content_info: state
+                    fill_container: true
               - type: custom:layout-card
                 layout_type: grid
                 layout:
