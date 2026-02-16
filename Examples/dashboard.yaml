@@ -13,13 +13,17 @@
 # 2) Copy/paste this file into the dashboard YAML editor
 # 3) Update the entity IDs in the "Entity IDs you must change" section below to match your setup.
 #
-# Entity IDs you must change (common ones vary by user):
-# - switch.lightgrowtent
-# - switch.heatergrowtent
-# - switch.ventilationgrowtent
-# - switch.exhaustgrowtent
-# - sensor.canopy_temperature / sensor.top_temperature / sensor.canopy_humidity / sensor.top_humidity
+# Entity IDs you must change (common ones vary by user)
+# - Light: switch.lightgrowtent
+# - Ventilation Fan: swith.ventilationgrowtent
+# - Exhaust Fan: switch.exhaustgrowtent
+# - Heater: switch.heatergrowtent
+# - Humidifier: switch.humidifiergrowtent
+# - Dehumidifier: switch.dehumidifiergrowtent
+# - Humidity sensor: sensor.canopy_humidity and sensor.top_humidity
+# - Temperature sensor: sensor.canopy_temperature and sensor.top_temperature
 # - input_datetime.* / input_number.* (if you don't have these helpers)
+#
 #
 title: Grow Tent
 views:
