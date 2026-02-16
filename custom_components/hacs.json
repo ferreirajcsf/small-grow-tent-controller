@@ -1,4 +1,6 @@
 {
   "name": "Small Grow Tent Controller",
-  "content_in_root": true
+  "content_in_root": true,
+  "render_readme": true,
+  "zip_release": true
 }
