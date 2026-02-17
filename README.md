@@ -33,20 +33,6 @@ Go to **Settings → Devices & services → Add integration** and search for:
 
 Follow the wizard.
 
-### Multiple grow tents / rooms
-
-You can add this integration multiple times (one config entry per tent/room).
-During setup you will be asked for a **Name** (e.g., "Veg Tent", "Flower Room").
-All entities created by that instance will be grouped under a separate device in Home Assistant.
-
-### Services (per-instance targeting)
-
-This integration registers services under the domain **`small_grow_tent_controller`**.
-All services support targeting a specific tent/room by selecting the **device** created by the relevant config entry.
-
-- `small_grow_tent_controller.refresh` — force an immediate refresh + control evaluation
-- `small_grow_tent_controller.set_stage` — set the stage preset (Seedling/Vegetative/Early Flower/Mid Flower/Late Flower/Drying)
-- `small_grow_tent_controller.set_enabled` — enable/disable the controller (equivalent to toggling the Controller switch)
 
 ## Example Dashboard
 
