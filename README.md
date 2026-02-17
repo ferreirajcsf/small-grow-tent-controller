@@ -33,93 +33,10 @@ Go to **Settings → Devices & services → Add integration** and search for:
 
 Follow the wizard.
 
-📊 Dashboard example (v0.1.7+)
+## Example Dashboard
 
-An example Lovelace dashboard is provided in:
-
-Examples/dashboard.yaml
-
-
-This dashboard is designed to work out of the box with the integration and provides:
-
-Controller status and stage selection
-
-Environmental calculations (averages, VPD, dew point)
-
-Device controls (light, fans, heater, humidifier, dehumidifier)
-
-Safety tuning and hard limits
-
-Grow cycle tracking and trends
-
-✨ Automatic device-aware UI (v0.1.7+)
-
-Starting with v0.1.7, the integration exposes per-device enable flags as binary sensors.
-These allow the dashboard to automatically hide controls and tuning options for devices that are disabled in the integration configuration.
-
-This keeps the UI clean when you are not using all supported devices.
-
-🔌 Device enable binary sensors
-
-For each optional device, the integration creates a binary sensor that reflects whether that device is enabled in the integration configuration:
-
-Binary sensor entity	Meaning
-binary_sensor.use_light_control	Grow light control enabled
-binary_sensor.use_circulation_fan_control	Circulation fan enabled
-binary_sensor.use_exhaust_fan_control	Exhaust fan enabled
-binary_sensor.use_heater_control	Heater enabled
-binary_sensor.use_humidifier_control	Humidifier enabled
-binary_sensor.use_dehumidifier_control	Dehumidifier enabled
-
-These sensors:
-
-Are ON when the device is enabled in Settings → Devices & Services → Integrations → Small Grow Tent Controller → Configure
-
-Update automatically when configuration options change
-
-Require no helpers or manual synchronization
-
-🧩 How the dashboard uses these sensors
-
-The example dashboard uses Lovelace conditional cards to show or hide UI elements dynamically.
-
-For example, the humidifier device card is only shown when humidifier control is enabled:
-
-type: conditional
-conditions:
-  - entity: binary_sensor.use_humidifier_control
-    state: "on"
-card:
-  type: custom:mushroom-entity-card
-  entity: switch.humidifiergrowtent
-  name: Humidifier
-
-
-The same pattern is used for:
-
-Device control cards
-
-Device-specific tuning sliders (e.g. hold times)
-
-Light schedule cards
-
-As a result:
-
-Disabled devices do not appear in the dashboard
-
-“Entity not found” warnings are avoided
-
-The layout adapts automatically to partial setups
-
-✅ Recommended usage
-
-Use Examples/dashboard.yaml as a starting point
-
-Keep device enable/disable decisions in the integration configuration, not the dashboard
-
-Let the dashboard react automatically via the binary_sensor.use_* entities
-
-This approach ensures a single source of truth and a clean, maintenance-free UI.
+This repository includes an example Lovelace dashboard for the
+Small Grow Tent Controller integration.
 
 📁 Location:
 examples/dashboard.yaml
