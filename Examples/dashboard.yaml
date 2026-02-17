@@ -13,13 +13,17 @@
 # 2) Copy/paste this file into the dashboard YAML editor
 # 3) Update the entity IDs in the "Entity IDs you must change" section below to match your setup.
 #
-# Entity IDs you must change (common ones vary by user):
-# - switch.lightgrowtent
-# - switch.heatergrowtent
-# - switch.ventilationgrowtent
-# - switch.exhaustgrowtent
-# - sensor.canopy_temperature / sensor.top_temperature / sensor.canopy_humidity / sensor.top_humidity
+# Entity IDs you must change (common ones vary by user)
+# - Light: switch.lightgrowtent
+# - Ventilation Fan: swith.ventilationgrowtent
+# - Exhaust Fan: switch.exhaustgrowtent
+# - Heater: switch.heatergrowtent
+# - Humidifier: switch.humidifiergrowtent
+# - Dehumidifier: switch.dehumidifiergrowtent
+# - Humidity sensor: sensor.canopy_humidity and sensor.top_humidity
+# - Temperature sensor: sensor.canopy_temperature and sensor.top_temperature
 # - input_datetime.* / input_number.* (if you don't have these helpers)
+#
 #
 title: Grow Tent
 views:
@@ -33,8 +37,8 @@ views:
           grid-template-columns: 1fr 1fr 1fr
           grid-template-rows: auto auto auto auto auto auto
           grid-template-areas: |
-            "small calc devices"
-            "tuning env limits"
+            "small calc env"
+            "tuning devices limits"
             "cycle cycle cycle"
             "trend1 trend2 trend3"
             "debug debug debug"
@@ -50,8 +54,6 @@ views:
                 title: Grow Tent
                 subtitle: Grow Tent Controller
                 alignment: center
-
-              # Controller + Stage cards (Mode shown inside Controller card)
               - type: custom:layout-card
                 layout_type: grid
                 layout:
@@ -64,10 +66,9 @@ views:
                     entity: sensor.control_mode
                     primary: Controller
                     secondary: >
-                      {% set m = states('sensor.control_mode') %}
-                      {% set on = is_state('switch.controller','on') %}
-                      {% set badge = 'ON' if on else 'OFF' %}
-                      {% set map = {
+                      {% set m = states('sensor.control_mode') %} {% set on =
+                      is_state('switch.controller','on') %} {% set badge = 'ON'
+                      if on else 'OFF' %} {% set map = {
                         'disabled': 'Disabled',
                         'waiting_for_sensors': 'Waiting for sensors',
                         'init': 'Starting…',
@@ -84,19 +85,20 @@ views:
                         'drying_hard_limit:temp_above_max': 'Drying: Temp too high',
                         'drying_hard_limit:rh_below_min': 'Drying: RH too low',
                         'drying_hard_limit:rh_above_max': 'Drying: RH too high'
-                      } %}
-                      {{ map.get(m, m | replace('_',' ') ) }} • {{ badge }}
+                      } %} {{ map.get(m, m | replace('_',' ') ) }} • {{ badge }}
                     icon: >
-                      {% set m = states('sensor.control_mode') %}
-                      {% if m == 'vpd_chase' %}
+                      {% set m = states('sensor.control_mode') %} {% if m ==
+                      'vpd_chase' %}
                         mdi:chart-bell-curve-cumulative
                       {% elif m in ['disabled','waiting_for_sensors','init'] %}
                         mdi:clock-outline
                       {% elif m.startswith('night_') %}
                         mdi:weather-night
-                      {% elif m.startswith('hard_limit:temp') or m.startswith('drying_hard_limit:temp') %}
+                      {% elif m.startswith('hard_limit:temp') or
+                      m.startswith('drying_hard_limit:temp') %}
                         mdi:thermometer-alert
-                      {% elif m.startswith('hard_limit:rh') or m.startswith('drying_hard_limit:rh') %}
+                      {% elif m.startswith('hard_limit:rh') or
+                      m.startswith('drying_hard_limit:rh') %}
                         mdi:water-alert
                       {% elif m.startswith('safety_trip:heater_max_run') %}
                         mdi:alert-octagon
@@ -106,23 +108,17 @@ views:
                         mdi:robot
                       {% endif %}
                     icon_color: >
-                      {% set m = states('sensor.control_mode') %}
-                      {% if m == 'vpd_chase' %}
+                      {% set m = states('sensor.control_mode') %} {% if m ==
+                      'vpd_chase' %}
                         green
-                      {% elif m.startswith('hard_limit:') %}
-                        red
-                      {% elif m.startswith('drying_hard_limit:') %}
-                        red
-                      {% elif m.startswith('safety_trip:') %}
+                      {% elif m.startswith('hard_limit:') or
+                      m.startswith('drying_hard_limit:') or
+                      m.startswith('safety_trip:') %}
                         red
                       {% elif m.startswith('night_') %}
                         blue
                       {% elif m == 'drying_hard_limits_only' %}
                         amber
-                      {% elif m in ['waiting_for_sensors','init'] %}
-                        grey
-                      {% elif m == 'disabled' %}
-                        grey
                       {% else %}
                         grey
                       {% endif %}
@@ -135,7 +131,6 @@ views:
                     hold_action:
                       action: more-info
                       entity: sensor.control_mode
-
                   - type: custom:mushroom-entity-card
                     entity: select.stage
                     name: Stage
@@ -143,7 +138,6 @@ views:
                     tap_action:
                       action: more-info
                     fill_container: true
-
               - type: custom:layout-card
                 layout_type: grid
                 layout:
@@ -152,17 +146,26 @@ views:
                   grid-column-gap: 12px
                   grid-row-gap: 12px
                 cards:
-                  - type: custom:mushroom-entity-card
-                    entity: time.light_on_time
-                    name: Light On
-                    icon: mdi:weather-sunny
-                    fill_container: true
-                  - type: custom:mushroom-entity-card
-                    entity: time.light_off_time
-                    name: Light Off
-                    icon: mdi:weather-night
-                    fill_container: true
-
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_light_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-entity-card
+                      entity: time.light_on_time
+                      name: Light On
+                      icon: mdi:weather-sunny
+                      fill_container: true
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_light_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-entity-card
+                      entity: time.light_off_time
+                      name: Light Off
+                      icon: mdi:weather-night
+                      fill_container: true
           - type: vertical-stack
             view_layout:
               grid-area: calc
@@ -199,7 +202,163 @@ views:
                     name: Dew Point
                     icon: mdi:weather-fog
                     fill_container: true
-
+          - type: vertical-stack
+            view_layout:
+              grid-area: env
+            cards:
+              - type: custom:mushroom-title-card
+                title: Environment
+                subtitle: Raw sensors
+                alignment: center
+              - type: custom:layout-card
+                layout_type: grid
+                layout:
+                  grid-template-columns: repeat(2, 1fr)
+                  grid-auto-rows: 116px
+                  grid-column-gap: 12px
+                  grid-row-gap: 12px
+                cards:
+                  - type: custom:mushroom-entity-card
+                    entity: sensor.canopy_temperature
+                    name: Canopy Temp
+                    icon: mdi:thermometer
+                    fill_container: true
+                  - type: custom:mushroom-entity-card
+                    entity: sensor.top_temperature
+                    name: Top Temp
+                    icon: mdi:thermometer
+                    fill_container: true
+                  - type: custom:mushroom-entity-card
+                    entity: sensor.canopy_humidity
+                    name: Canopy RH
+                    icon: mdi:water-percent
+                    fill_container: true
+                  - type: custom:mushroom-entity-card
+                    entity: sensor.top_humidity
+                    name: Top RH
+                    icon: mdi:water-percent
+                    fill_container: true
+          - type: vertical-stack
+            view_layout:
+              grid-area: tuning
+            cards:
+              - type: custom:mushroom-title-card
+                title: Tuning / Safety
+                subtitle: Anti-cycling + dew-point protection
+                alignment: center
+              - type: custom:layout-card
+                layout_type: grid
+                layout:
+                  grid-template-columns: repeat(2, 1fr)
+                  grid-auto-rows: 116px
+                  grid-column-gap: 12px
+                  grid-row-gap: 12px
+                cards:
+                  - type: custom:mushroom-number-card
+                    entity: number.leaf_temp_offset
+                    name: Leaf Temp Offset
+                    icon: mdi:leaf
+                    display_mode: buttons
+                    fill_container: true
+                    card_mod:
+                      style: >
+                        ha-card { padding-top: 8px !important; padding-bottom:
+                        8px !important; }
+                  - type: custom:mushroom-number-card
+                    entity: number.vpd_deadband
+                    name: VPD Deadband
+                    icon: mdi:arrow-expand-vertical
+                    display_mode: buttons
+                    fill_container: true
+                    card_mod:
+                      style: >
+                        ha-card { padding-top: 8px !important; padding-bottom:
+                        8px !important; }
+                  - type: custom:mushroom-number-card
+                    entity: number.dew_point_margin
+                    name: Dew Margin
+                    icon: mdi:weather-fog
+                    display_mode: buttons
+                    fill_container: true
+                    card_mod:
+                      style: >
+                        ha-card { padding-top: 8px !important; padding-bottom:
+                        8px !important; }
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_exhaust_fan_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-number-card
+                      entity: number.exhaust_hold_time
+                      name: Exhaust Hold (s)
+                      icon: mdi:fan-chevron-up
+                      display_mode: buttons
+                      fill_container: true
+                      card_mod:
+                        style: >
+                          ha-card { padding-top: 8px !important; padding-bottom:
+                          8px !important; }
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_heater_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-number-card
+                      entity: number.heater_max_run_time
+                      name: Heater Max Run (s)
+                      icon: mdi:timer-outline
+                      display_mode: buttons
+                      fill_container: true
+                      card_mod:
+                        style: >
+                          ha-card { padding-top: 8px !important; padding-bottom:
+                          8px !important; }
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_heater_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-number-card
+                      entity: number.heater_hold_time
+                      name: Heater Hold (s)
+                      icon: mdi:radiator
+                      display_mode: buttons
+                      fill_container: true
+                      card_mod:
+                        style: >
+                          ha-card { padding-top: 8px !important; padding-bottom:
+                          8px !important; }
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_humidifier_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-number-card
+                      entity: number.humidifier_hold_time
+                      name: Humidifier Hold (s)
+                      icon: mdi:air-humidifier
+                      display_mode: buttons
+                      fill_container: true
+                      card_mod:
+                        style: >
+                          ha-card { padding-top: 8px !important; padding-bottom:
+                          8px !important; }
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_dehumidifier_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-number-card
+                      entity: number.dehumidifier_hold_time
+                      name: Dehumidifier Hold (s)
+                      icon: mdi:water-off
+                      display_mode: buttons
+                      fill_container: true
+                      card_mod:
+                        style: >
+                          ha-card { padding-top: 8px !important; padding-bottom:
+                          8px !important; }
           - type: vertical-stack
             view_layout:
               grid-area: devices
@@ -216,35 +375,134 @@ views:
                   grid-column-gap: 12px
                   grid-row-gap: 12px
                 cards:
-                  - type: custom:mushroom-entity-card
-                    entity: switch.lightgrowtent
-                    name: Grow Light
-                    icon: mdi:lightbulb-on-10
-                    tap_action:
-                      action: toggle
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_light_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-entity-card
+                      entity: switch.lightgrowtent
+                      name: Grow Light
+                      icon: mdi:lightbulb-on-10
+                      tap_action:
+                        action: toggle
+                      fill_container: true
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_heater_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-entity-card
+                      entity: switch.heatergrowtent
+                      name: Heater
+                      icon: mdi:radiator
+                      tap_action:
+                        action: toggle
+                      fill_container: true
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_circulation_fan_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-entity-card
+                      entity: switch.ventilationgrowtent
+                      name: Circulation Fan
+                      icon: mdi:fan
+                      tap_action:
+                        action: toggle
+                      fill_container: true
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_exhaust_fan_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-entity-card
+                      entity: switch.exhaustgrowtent
+                      name: Exhaust Fan
+                      icon: mdi:fan-chevron-up
+                      tap_action:
+                        action: toggle
+                      fill_container: true
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_humidifier_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-entity-card
+                      entity: switch.humidifiergrowtent
+                      name: Humidifier
+                      icon: mdi:air-humidifier
+                      tap_action:
+                        action: toggle
+                      fill_container: true
+                  - type: conditional
+                    conditions:
+                      - entity: binary_sensor.use_dehumidifier_control
+                        state: 'on'
+                    card:
+                      type: custom:mushroom-entity-card
+                      entity: switch.dehumidifiergrowtent
+                      name: Dehumidifier
+                      icon: mdi:water-off
+                      tap_action:
+                        action: toggle
+                      fill_container: true
+          - type: vertical-stack
+            view_layout:
+              grid-area: limits
+            cards:
+              - type: custom:mushroom-title-card
+                title: Limits (Hard Stop)
+                subtitle: When hit, controller stops chasing VPD
+                alignment: center
+              - type: custom:layout-card
+                layout_type: grid
+                layout:
+                  grid-template-columns: repeat(2, 1fr)
+                  grid-auto-rows: 116px
+                  grid-column-gap: 12px
+                  grid-row-gap: 12px
+                cards:
+                  - type: custom:mushroom-number-card
+                    entity: number.min_temperature
+                    name: Min Temp
+                    icon: mdi:thermometer-low
+                    display_mode: slider
                     fill_container: true
-                  - type: custom:mushroom-entity-card
-                    entity: switch.heatergrowtent
-                    name: Heater
-                    icon: mdi:radiator
-                    tap_action:
-                      action: toggle
+                    card_mod:
+                      style: >
+                        ha-card { padding-top: 8px !important; padding-bottom:
+                        8px !important; }
+                  - type: custom:mushroom-number-card
+                    entity: number.max_temperature
+                    name: Max Temp
+                    icon: mdi:thermometer-high
+                    display_mode: slider
                     fill_container: true
-                  - type: custom:mushroom-entity-card
-                    entity: switch.ventilationgrowtent
-                    name: Circulation Fan
-                    icon: mdi:fan
-                    tap_action:
-                      action: toggle
+                    card_mod:
+                      style: >
+                        ha-card { padding-top: 8px !important; padding-bottom:
+                        8px !important; }
+                  - type: custom:mushroom-number-card
+                    entity: number.min_humidity
+                    name: Min RH
+                    icon: mdi:water-minus
+                    display_mode: slider
                     fill_container: true
-                  - type: custom:mushroom-entity-card
-                    entity: switch.exhaustgrowtent
-                    name: Exhaust Fan
-                    icon: mdi:fan-chevron-up
-                    tap_action:
-                      action: toggle
+                    card_mod:
+                      style: >
+                        ha-card { padding-top: 8px !important; padding-bottom:
+                        8px !important; }
+                  - type: custom:mushroom-number-card
+                    entity: number.max_humidity
+                    name: Max RH
+                    icon: mdi:water-plus
+                    display_mode: slider
                     fill_container: true
-
+                    card_mod:
+                      style: >
+                        ha-card { padding-top: 8px !important; padding-bottom:
+                        8px !important; }
           - type: vertical-stack
             view_layout:
               grid-area: cycle
@@ -293,265 +551,6 @@ views:
                     name: To Harvest
                     icon: mdi:calendar-end
                     fill_container: true
-
-          - type: vertical-stack
-            view_layout:
-              grid-area: tuning
-            cards:
-              - type: custom:mushroom-title-card
-                title: Tuning / Safety
-                subtitle: Anti-cycling + dew-point protection
-                alignment: center
-              - type: custom:layout-card
-                layout_type: grid
-                layout:
-                  grid-template-columns: repeat(2, 1fr)
-                  grid-auto-rows: 116px
-                  grid-column-gap: 12px
-                  grid-row-gap: 12px
-                cards:
-                  - type: custom:mushroom-number-card
-                    entity: number.leaf_temp_offset
-                    name: Leaf Temp Offset
-                    icon: mdi:leaf
-                    display_mode: slider
-                    fill_container: true
-                    card_mod:
-                      style: |
-                        ha-card {
-                          padding-top: 8px !important;
-                          padding-bottom: 8px !important;
-                        }
-                        ha-card ha-slider,
-                        ha-card mwc-slider {
-                          --mdc-slider-active-track-height: 2px;
-                          --mdc-slider-inactive-track-height: 2px;
-                          --mdc-slider-track-height: 2px;
-                          --mdc-slider-handle-size: 14px;
-                          --mdc-slider-thumb-size: 14px;
-                        }
-                  - type: custom:mushroom-number-card
-                    entity: number.vpd_deadband
-                    name: VPD Deadband
-                    icon: mdi:arrow-expand-vertical
-                    display_mode: slider
-                    fill_container: true
-                    card_mod:
-                      style: |
-                        ha-card {
-                          padding-top: 8px !important;
-                          padding-bottom: 8px !important;
-                        }
-                        ha-card ha-slider, ha-card mwc-slider {
-                          --mdc-slider-active-track-height: 2px;
-                          --mdc-slider-inactive-track-height: 2px;
-                          --mdc-slider-track-height: 2px;
-                          --mdc-slider-handle-size: 14px;
-                          --mdc-slider-thumb-size: 14px;
-                        }
-                  - type: custom:mushroom-number-card
-                    entity: number.dew_point_margin
-                    name: Dew Margin
-                    icon: mdi:weather-fog
-                    display_mode: slider
-                    fill_container: true
-                    card_mod:
-                      style: |
-                        ha-card {
-                          padding-top: 8px !important;
-                          padding-bottom: 8px !important;
-                        }
-                        ha-card ha-slider,
-                        ha-card mwc-slider {
-                          --mdc-slider-active-track-height: 2px;
-                          --mdc-slider-inactive-track-height: 2px;
-                          --mdc-slider-track-height: 2px;
-                          --mdc-slider-handle-size: 14px;
-                          --mdc-slider-thumb-size: 14px;
-                        }
-                  - type: custom:mushroom-number-card
-                    entity: number.exhaust_hold_time
-                    name: Exhaust Hold (s)
-                    icon: mdi:fan-chevron-up
-                    display_mode: slider
-                    fill_container: true
-                    card_mod:
-                      style: |
-                        ha-card {
-                          padding-top: 8px !important;
-                          padding-bottom: 8px !important;
-                        }
-                        ha-card ha-slider,
-                        ha-card mwc-slider {
-                          --mdc-slider-active-track-height: 2px;
-                          --mdc-slider-inactive-track-height: 2px;
-                          --mdc-slider-track-height: 2px;
-                          --mdc-slider-handle-size: 14px;
-                          --mdc-slider-thumb-size: 14px;
-                        }
-                  - type: custom:mushroom-number-card
-                    entity: number.heater_hold_time
-                    name: Heater Hold (s)
-                    icon: mdi:radiator
-                    display_mode: slider
-                    fill_container: true
-                    card_mod:
-                      style: |
-                        ha-card {
-                          padding-top: 8px !important;
-                          padding-bottom: 8px !important;
-                        }
-                        ha-card ha-slider,
-                        ha-card mwc-slider {
-                          --mdc-slider-active-track-height: 2px;
-                          --mdc-slider-inactive-track-height: 2px;
-                          --mdc-slider-track-height: 2px;
-                          --mdc-slider-handle-size: 14px;
-                          --mdc-slider-thumb-size: 14px;
-                        }
-                  - type: custom:mushroom-number-card
-                    entity: number.heater_max_run_time
-                    name: Heater Max Run (s)
-                    icon: mdi:timer-outline
-                    display_mode: slider
-                    fill_container: true
-                    card_mod:
-                      style: |
-                        ha-card {
-                          padding-top: 8px !important;
-                          padding-bottom: 8px !important;
-                        }
-                        ha-card ha-slider,
-                        ha-card mwc-slider {
-                          --mdc-slider-active-track-height: 2px;
-                          --mdc-slider-inactive-track-height: 2px;
-                          --mdc-slider-track-height: 2px;
-                          --mdc-slider-handle-size: 14px;
-                          --mdc-slider-thumb-size: 14px;
-                        }
-
-          - type: vertical-stack
-            view_layout:
-              grid-area: env
-            cards:
-              - type: custom:mushroom-title-card
-                title: Environment
-                subtitle: Raw sensors
-                alignment: center
-              - type: custom:layout-card
-                layout_type: grid
-                layout:
-                  grid-template-columns: repeat(2, 1fr)
-                  grid-auto-rows: 116px
-                  grid-column-gap: 12px
-                  grid-row-gap: 12px
-                cards:
-                  - type: custom:mushroom-entity-card
-                    entity: sensor.canopy_temperature
-                    name: Canopy Temp
-                    icon: mdi:thermometer
-                    fill_container: true
-                  - type: custom:mushroom-entity-card
-                    entity: sensor.top_temperature
-                    name: Top Temp
-                    icon: mdi:thermometer
-                    fill_container: true
-                  - type: custom:mushroom-entity-card
-                    entity: sensor.canopy_humidity
-                    name: Canopy RH
-                    icon: mdi:water-percent
-                    fill_container: true
-                  - type: custom:mushroom-entity-card
-                    entity: sensor.top_humidity
-                    name: Top RH
-                    icon: mdi:water-percent
-                    fill_container: true
-
-          - type: vertical-stack
-            view_layout:
-              grid-area: limits
-            cards:
-              - type: custom:mushroom-title-card
-                title: Limits (Hard Stop)
-                subtitle: When hit, controller stops chasing VPD
-                alignment: center
-              - type: custom:layout-card
-                layout_type: grid
-                layout:
-                  grid-template-columns: repeat(2, 1fr)
-                  grid-auto-rows: 116px
-                  grid-column-gap: 12px
-                  grid-row-gap: 12px
-                cards:
-                  - type: custom:mushroom-number-card
-                    entity: number.min_temperature
-                    name: Min Temp
-                    icon: mdi:thermometer-low
-                    display_mode: slider
-                    fill_container: true
-                    card_mod:
-                      style: >
-                        ha-card { padding-top: 8px !important; padding-bottom:
-                        8px !important; } ha-card ha-slider, ha-card mwc-slider
-                        {
-                          --mdc-slider-active-track-height: 2px;
-                          --mdc-slider-inactive-track-height: 2px;
-                          --mdc-slider-track-height: 2px;
-                          --mdc-slider-handle-size: 14px;
-                          --mdc-slider-thumb-size: 14px;
-                        }
-                  - type: custom:mushroom-number-card
-                    entity: number.max_temperature
-                    name: Max Temp
-                    icon: mdi:thermometer-high
-                    display_mode: slider
-                    fill_container: true
-                    card_mod:
-                      style: >
-                        ha-card { padding-top: 8px !important; padding-bottom:
-                        8px !important; } ha-card ha-slider, ha-card mwc-slider
-                        {
-                          --mdc-slider-active-track-height: 2px;
-                          --mdc-slider-inactive-track-height: 2px;
-                          --mdc-slider-track-height: 2px;
-                          --mdc-slider-handle-size: 14px;
-                          --mdc-slider-thumb-size: 14px;
-                        }
-                  - type: custom:mushroom-number-card
-                    entity: number.min_humidity
-                    name: Min RH
-                    icon: mdi:water-minus
-                    display_mode: slider
-                    fill_container: true
-                    card_mod:
-                      style: >
-                        ha-card { padding-top: 8px !important; padding-bottom:
-                        8px !important; } ha-card ha-slider, ha-card mwc-slider
-                        {
-                          --mdc-slider-active-track-height: 2px;
-                          --mdc-slider-inactive-track-height: 2px;
-                          --mdc-slider-track-height: 2px;
-                          --mdc-slider-handle-size: 14px;
-                          --mdc-slider-thumb-size: 14px;
-                        }
-                  - type: custom:mushroom-number-card
-                    entity: number.max_humidity
-                    name: Max RH
-                    icon: mdi:water-plus
-                    display_mode: slider
-                    fill_container: true
-                    card_mod:
-                      style: >
-                        ha-card { padding-top: 8px !important; padding-bottom:
-                        8px !important; } ha-card ha-slider, ha-card mwc-slider
-                        {
-                          --mdc-slider-active-track-height: 2px;
-                          --mdc-slider-inactive-track-height: 2px;
-                          --mdc-slider-track-height: 2px;
-                          --mdc-slider-handle-size: 14px;
-                          --mdc-slider-thumb-size: 14px;
-                        }
-
           - type: history-graph
             view_layout:
               grid-area: trend1
@@ -562,7 +561,6 @@ views:
               - sensor.average_temperature
               - sensor.canopy_temperature
               - sensor.top_temperature
-
           - type: history-graph
             view_layout:
               grid-area: trend2
@@ -573,7 +571,6 @@ views:
               - sensor.average_humidity
               - sensor.canopy_humidity
               - sensor.top_humidity
-
           - type: history-graph
             view_layout:
               grid-area: trend3
@@ -583,7 +580,6 @@ views:
             entities:
               - sensor.vpd
               - sensor.dew_point
-
           - type: vertical-stack
             view_layout:
               grid-area: debug
@@ -621,3 +617,4 @@ views:
                     icon: mdi:white-balance-sunny
                     fill_container: true
     type: custom:grid-layout
+
