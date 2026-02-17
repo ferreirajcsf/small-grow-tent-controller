@@ -53,27 +53,28 @@ views:
               - type: custom:mushroom-title-card
                 title: Grow Tent
                 subtitle: >
-                  {% set upd = 'update.small_grow_tent_controller_update' %}
-                  {% set installed = state_attr(upd, 'installed_version') %}
-                  {% set latest = state_attr(upd, 'latest_version') %}
-                  {% set has_update = installed and latest and installed != latest %}
-                  Grow Tent Controller
-                  {%- if installed -%}
+                  {% set upd = 'update.small_grow_tent_controller_update' %} {%
+                  set installed = state_attr(upd, 'installed_version') %} {% set
+                  latest = state_attr(upd, 'latest_version') %} {% set
+                  has_update = installed and latest and installed != latest %}
+                  Grow Tent Controller {%- if installed -%}
                     ({{ installed }}{%- if has_update -%} → {{ latest }}{%- endif -%})
-                  {%- endif -%}
-                  {%- if has_update -%}
+                  {%- endif -%} {%- if has_update -%}
                     • UPDATE AVAILABLE
                   {%- endif -%}
                 alignment: center
                 tap_action:
                   action: url
-                  url_path: https://github.com/ferreirajcsf/small-grow-tent-controller/releases/latest
+                  url_path: >-
+                    https://github.com/ferreirajcsf/small-grow-tent-controller/releases/latest
                 hold_action:
                   action: more-info
                   entity: update.small_grow_tent_controller_update
                 card_mod:
-                  style: |
-                    /* Color the subtitle amber + slightly bolder when an update is available */
+                  style: >
+                    /* Color the subtitle amber + slightly bolder when an update
+                    is available */
+
                     ha-card .subtitle {
                       color: [[[ 
                         const u = states['update.small_grow_tent_controller_update'];
@@ -90,7 +91,6 @@ views:
                         return (i && l && i !== l) ? '600' : '400';
                       ]]];
                     }
-
               - type: custom:layout-card
                 layout_type: grid
                 layout:
@@ -203,7 +203,6 @@ views:
                       name: Light Off
                       icon: mdi:weather-night
                       fill_container: true
-
           - type: vertical-stack
             view_layout:
               grid-area: calc
@@ -240,7 +239,6 @@ views:
                     name: Dew Point
                     icon: mdi:weather-fog
                     fill_container: true
-
           - type: vertical-stack
             view_layout:
               grid-area: env
@@ -277,7 +275,6 @@ views:
                     name: Top RH
                     icon: mdi:water-percent
                     fill_container: true
-
           - type: vertical-stack
             view_layout:
               grid-area: tuning
@@ -399,14 +396,13 @@ views:
                         style: >
                           ha-card { padding-top: 8px !important; padding-bottom:
                           8px !important; }
-
           - type: vertical-stack
             view_layout:
               grid-area: devices
             cards:
               - type: custom:mushroom-title-card
                 title: Devices
-                subtitle: Smart plug controls
+                subtitle: Device Entity controls
                 alignment: center
               - type: custom:layout-card
                 layout_type: grid
@@ -488,7 +484,6 @@ views:
                       tap_action:
                         action: toggle
                       fill_container: true
-
           - type: vertical-stack
             view_layout:
               grid-area: limits
@@ -545,7 +540,6 @@ views:
                       style: >
                         ha-card { padding-top: 8px !important; padding-bottom:
                         8px !important; }
-
           - type: vertical-stack
             view_layout:
               grid-area: cycle
@@ -594,7 +588,6 @@ views:
                     name: To Harvest
                     icon: mdi:calendar-end
                     fill_container: true
-
           - type: history-graph
             view_layout:
               grid-area: trend1
@@ -605,7 +598,6 @@ views:
               - sensor.average_temperature
               - sensor.canopy_temperature
               - sensor.top_temperature
-
           - type: history-graph
             view_layout:
               grid-area: trend2
@@ -616,7 +608,6 @@ views:
               - sensor.average_humidity
               - sensor.canopy_humidity
               - sensor.top_humidity
-
           - type: history-graph
             view_layout:
               grid-area: trend3
@@ -626,7 +617,6 @@ views:
             entities:
               - sensor.vpd
               - sensor.dew_point
-
           - type: vertical-stack
             view_layout:
               grid-area: debug
