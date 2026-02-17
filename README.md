@@ -1,6 +1,6 @@
 [![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
 [![Version](https://img.shields.io/github/v/release/ferreirajcsf/small-grow-tent-controller?display_name=tag&sort=semver)](https://github.com/ferreirajcsf/small-grow-tent-controller/releases)
-[![License](https://img.shields.io/github/license/ferreirajcsf/small-grow-tent-controller)](LICENSE)
+[![License](https://img.shields.io/github/license/ferreirajcsf/small-grow-tent-controller.svg?cacheSeconds=3600)](LICENSE)
 
 # Small Grow Tent Controller (Home Assistant Integration)
 
