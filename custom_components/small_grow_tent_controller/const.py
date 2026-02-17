@@ -1,6 +1,6 @@
 DOMAIN = "small_grow_tent_controller"
 
-PLATFORMS = ["sensor", "switch", "select", "number", "time"]
+PLATFORMS = ["sensor", "switch", "select", "number", "time", "binary_sensor"]
 
 # Fixed entity-id option keys
 CONF_LIGHT_SWITCH = "light_switch"
