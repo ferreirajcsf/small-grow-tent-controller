@@ -42,20 +42,6 @@ All entities are exposed through Home Assistant’s standard UI once the integra
 
 ---
 
-## Prerequisites
-
-Before installing, you should have:
-
-- At least **two temperature sensors** (e.g. canopy and top)
-- At least **two humidity sensors**
-- Sensors reporting in:
-  - °C for temperature
-  - % for relative humidity
-
-VPD and dew point are **calculated automatically** by the integration.
-
----
-
 ## Installation
 
 ### Option A — HACS (Custom Repository)
