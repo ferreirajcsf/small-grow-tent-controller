@@ -50,8 +50,6 @@ views:
             view_layout:
               grid-area: small
             cards:
-              # ✅ UPDATED: Title card subtitle shows installed → latest, adds UPDATE AVAILABLE,
-              #            subtitle turns amber when update exists, and tapping opens releases page.
               - type: custom:mushroom-title-card
                 title: Grow Tent
                 subtitle: >
