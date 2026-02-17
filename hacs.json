@@ -2,7 +2,10 @@
   "name": "Small Grow Tent Controller",
   "content_in_root": false,
   "domain": "small_grow_tent_controller",
-  "country": ["US", "PT"],
+  "country": [
+    "US",
+    "PT"
+  ],
   "homeassistant": "2023.9.0",
   "render_readme": true
 }
