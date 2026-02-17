@@ -62,8 +62,16 @@ class GrowTentUseFlagBinarySensor(BinarySensorEntity):
             "identifiers": {(DOMAIN, entry.entry_id)},
             "name": "Small Grow Tent Controller",
         }
-
     @property
     def is_on(self) -> bool:
-        # Default to True for backwards-compatibility (older entries didn't have use_* flags).
-        return bool(self._entry.data.get(self._desc.key, self._desc.default))
+        # Prefer options (changed via Configure), fallback to data (initial setup),
+        # then default for backwards compatibility.
+        opts = self._entry.options or {}
+        data = self._entry.data or {}
+
+        if self._desc.key in opts:
+            return bool(opts[self._desc.key])
+        if self._desc.key in data:
+            return bool(data[self._desc.key])
+        return bool(self._desc.default)
+
