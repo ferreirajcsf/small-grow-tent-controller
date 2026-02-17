@@ -7,7 +7,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
-from .device import device_info_for_entry
 
 SENSORS = [
     ("avg_temp_c", "Average Temperature", SensorDeviceClass.TEMPERATURE, "°C"),
@@ -56,7 +55,6 @@ class GrowTentSensor(CoordinatorEntity, SensorEntity):
         self.key = key
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_name = name
-        self._attr_device_info = device_info_for_entry(entry)
         self._attr_device_class = devcls
         self._attr_native_unit_of_measurement = unit
 

@@ -1,12 +1,5 @@
 DOMAIN = "small_grow_tent_controller"
 
-# Keep in sync with manifest.json
-INTEGRATION_VERSION = "0.1.6"
-
-# User-facing instance name (supports multiple tents / rooms)
-CONF_NAME = "name"
-DEFAULT_NAME = "Grow Tent"
-
 PLATFORMS = ["sensor", "switch", "select", "number", "time"]
 
 # Fixed entity-id option keys
@@ -17,6 +10,14 @@ CONF_HEATER_SWITCH = "heater_switch"
 CONF_HUMIDIFIER_SWITCH = "humidifier_switch"
 CONF_DEHUMIDIFIER_SWITCH = "dehumidifier_switch"
 
+# Enable/disable device control (lets user omit devices they don't have)
+CONF_USE_LIGHT = "use_light"
+CONF_USE_CIRCULATION = "use_circulation"
+CONF_USE_EXHAUST = "use_exhaust"
+CONF_USE_HEATER = "use_heater"
+CONF_USE_HUMIDIFIER = "use_humidifier"
+CONF_USE_DEHUMIDIFIER = "use_dehumidifier"
+
 CONF_CANOPY_TEMP = "canopy_temp"
 CONF_TOP_TEMP = "top_temp"
 CONF_CANOPY_RH = "canopy_rh"
@@ -24,18 +25,26 @@ CONF_TOP_RH = "top_rh"
 
 # Defaults (your entities)
 DEFAULTS = {
-    CONF_NAME: DEFAULT_NAME,
     CONF_LIGHT_SWITCH: "switch.lightgrowtent",
     CONF_CIRC_SWITCH: "switch.ventilationgrowtent",  # you called this circulation/ventilation
     CONF_EXHAUST_SWITCH: "switch.exhaustgrowtent",
     CONF_HEATER_SWITCH: "switch.heatergrowtent",
-    # NEW (optional): humidity devices
     CONF_HUMIDIFIER_SWITCH: "switch.humidifiergrowtent",
     CONF_DEHUMIDIFIER_SWITCH: "switch.dehumidifiergrowtent",
     CONF_CANOPY_TEMP: "sensor.canopy_temperature",
     CONF_TOP_TEMP: "sensor.top_temperature",
     CONF_CANOPY_RH: "sensor.canopy_humidity",
     CONF_TOP_RH: "sensor.top_humidity",
+}
+
+# Which devices are enabled by default in the UI
+DEFAULT_DEVICE_ENABLE = {
+    CONF_USE_LIGHT: True,
+    CONF_USE_CIRCULATION: True,
+    CONF_USE_EXHAUST: True,
+    CONF_USE_HEATER: True,
+    CONF_USE_HUMIDIFIER: True,
+    CONF_USE_DEHUMIDIFIER: True,
 }
 
 # Stage targets (kPa) - representative cannabis guidance

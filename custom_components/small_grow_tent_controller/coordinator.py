@@ -21,6 +21,12 @@ from .const import (
     CONF_HEATER_SWITCH,
     CONF_HUMIDIFIER_SWITCH,
     CONF_DEHUMIDIFIER_SWITCH,
+    CONF_USE_LIGHT,
+    CONF_USE_CIRCULATION,
+    CONF_USE_EXHAUST,
+    CONF_USE_HEATER,
+    CONF_USE_HUMIDIFIER,
+    CONF_USE_DEHUMIDIFIER,
     CONF_CANOPY_TEMP,
     CONF_TOP_TEMP,
     CONF_CANOPY_RH,
@@ -82,7 +88,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return None
         return safe_float(st.state)
 
-    def _get_option(self, key: str) -> str | None:
+    def _get_option(self, key: str) -> Any:
         # prefer options (editable) then data (initial)
         return self.entry.options.get(key) or self.entry.data.get(key)
 
@@ -104,10 +110,6 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             {"entity_id": entity_id},
             blocking=False,
         )
-
-    def entity_id(self, platform: str, key: str) -> str:
-        """Return the entity_id for a given platform/key for this entry."""
-        return self._entity_id(platform, key)
 
     def _entity_id(self, domain: str, key: str) -> str:
         """Resolve current entity_id from unique_id, even if user renamed it."""
@@ -198,6 +200,27 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         heater_eid = self._get_option(CONF_HEATER_SWITCH)
         humidifier_eid = self._get_option(CONF_HUMIDIFIER_SWITCH)
         dehumidifier_eid = self._get_option(CONF_DEHUMIDIFIER_SWITCH)
+
+        # Device enable flags (if disabled, treat entity as not configured)
+        use_light = bool(self._get_option(CONF_USE_LIGHT) if self._get_option(CONF_USE_LIGHT) is not None else True)
+        use_circ = bool(self._get_option(CONF_USE_CIRCULATION) if self._get_option(CONF_USE_CIRCULATION) is not None else True)
+        use_exhaust = bool(self._get_option(CONF_USE_EXHAUST) if self._get_option(CONF_USE_EXHAUST) is not None else True)
+        use_heater = bool(self._get_option(CONF_USE_HEATER) if self._get_option(CONF_USE_HEATER) is not None else True)
+        use_humidifier = bool(self._get_option(CONF_USE_HUMIDIFIER) if self._get_option(CONF_USE_HUMIDIFIER) is not None else True)
+        use_dehumidifier = bool(self._get_option(CONF_USE_DEHUMIDIFIER) if self._get_option(CONF_USE_DEHUMIDIFIER) is not None else True)
+
+        if not use_light:
+            light_eid = None
+        if not use_circ:
+            circ_eid = None
+        if not use_exhaust:
+            exhaust_eid = None
+        if not use_heater:
+            heater_eid = None
+        if not use_humidifier:
+            humidifier_eid = None
+        if not use_dehumidifier:
+            dehumidifier_eid = None
 
         now = self._now()
         now_t = dt_util.as_local(now).time()

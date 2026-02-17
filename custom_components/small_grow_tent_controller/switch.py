@@ -7,7 +7,6 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
-from .device import device_info_for_entry
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
     async_add_entities([ControllerSwitch(hass, entry)])
@@ -20,7 +19,6 @@ class ControllerSwitch(SwitchEntity):
         self.entry = entry
         self._attr_unique_id = f"{entry.entry_id}_controller"
         self._attr_name = "Controller"
-        self._attr_device_info = device_info_for_entry(entry)
         self._is_on = True
         self.store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_state")
 

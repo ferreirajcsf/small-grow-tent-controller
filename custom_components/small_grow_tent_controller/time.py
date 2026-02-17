@@ -8,8 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN
-from .device import device_info_for_entry
+from .const import DOMAIN, CONF_USE_LIGHT
 
 TIMES = [
     ("light_on", "Light On Time", time(8, 0, 0)),
@@ -17,6 +16,15 @@ TIMES = [
 ]
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
+    use_light = entry.options.get(CONF_USE_LIGHT)
+    if use_light is None:
+        use_light = True
+
+    # If the user disables light control, hide the schedule entities.
+    if not bool(use_light):
+        async_add_entities([])
+        return
+
     async_add_entities([GrowTime(hass, entry, *cfg) for cfg in TIMES])
 
 class GrowTime(TimeEntity):
@@ -28,7 +36,6 @@ class GrowTime(TimeEntity):
         self.key = key
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_name = name
-        self._attr_device_info = device_info_for_entry(entry)
         self._value = default
         self.store = Store(hass, 1, f"{DOMAIN}_{entry.entry_id}_time_{key}")
 

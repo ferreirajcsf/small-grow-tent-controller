@@ -33,7 +33,6 @@ Go to **Settings → Devices & services → Add integration** and search for:
 
 Follow the wizard.
 
-
 ## Example Dashboard
 
 This repository includes an example Lovelace dashboard for the

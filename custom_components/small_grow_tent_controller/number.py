@@ -6,8 +6,13 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN
-from .device import device_info_for_entry
+from .const import (
+    DOMAIN,
+    CONF_USE_EXHAUST,
+    CONF_USE_HEATER,
+    CONF_USE_HUMIDIFIER,
+    CONF_USE_DEHUMIDIFIER,
+)
 
 NUMBERS = [
     ("min_temp_c", "Min Temperature", 10.0, 35.0, 0.1, 20.0, "°C"),
@@ -24,8 +29,40 @@ NUMBERS = [
     ("leaf_temp_offset_c", "Leaf Temp Offset", -5.0, 5.0, 0.1, -1.5, "°C"),
 ]
 
+
+def _is_enabled(entry: ConfigEntry, key: str, default: bool = True) -> bool:
+    """Return whether a device feature is enabled for this config entry."""
+    try:
+        v = entry.options.get(key)
+    except Exception:
+        v = None
+    if v is None:
+        return default
+    return bool(v)
+
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
-    async_add_entities([GrowNumber(hass, entry, *cfg) for cfg in NUMBERS])
+    use_heater = _is_enabled(entry, CONF_USE_HEATER, True)
+    use_exhaust = _is_enabled(entry, CONF_USE_EXHAUST, True)
+    use_humidifier = _is_enabled(entry, CONF_USE_HUMIDIFIER, True)
+    use_dehumidifier = _is_enabled(entry, CONF_USE_DEHUMIDIFIER, True)
+
+    selected = []
+    for cfg in NUMBERS:
+        key = cfg[0]
+
+        # Hide device-specific tuning controls when that device is disabled
+        if key in ("heater_hold_s", "heater_max_run_s") and not use_heater:
+            continue
+        if key == "exhaust_hold_s" and not use_exhaust:
+            continue
+        if key == "humidifier_hold_s" and not use_humidifier:
+            continue
+        if key == "dehumidifier_hold_s" and not use_dehumidifier:
+            continue
+
+        selected.append(cfg)
+
+    async_add_entities([GrowNumber(hass, entry, *cfg) for cfg in selected])
 
 class GrowNumber(NumberEntity):
     _attr_has_entity_name = True
@@ -38,7 +75,6 @@ class GrowNumber(NumberEntity):
         self.key = key
         self._attr_unique_id = f"{entry.entry_id}_{key}"
         self._attr_name = name
-        self._attr_device_info = device_info_for_entry(entry)
         self._attr_native_min_value = min_v
         self._attr_native_max_value = max_v
         self._attr_native_step = step
