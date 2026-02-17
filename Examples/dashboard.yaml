@@ -402,7 +402,7 @@ views:
             cards:
               - type: custom:mushroom-title-card
                 title: Devices
-                subtitle: Device Entity controls
+                subtitle: Device Entity Controls
                 alignment: center
               - type: custom:layout-card
                 layout_type: grid
@@ -608,7 +608,6 @@ views:
               - sensor.average_humidity
               - sensor.canopy_humidity
               - sensor.top_humidity
-
           - type: history-graph
             view_layout:
               grid-area: trend3
@@ -617,7 +616,6 @@ views:
             logarithmic_scale: false
             entities:
               - sensor.vpd
-
           - type: vertical-stack
             view_layout:
               grid-area: debug
