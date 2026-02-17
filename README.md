@@ -1,3 +1,7 @@
+[![HACS Custom](https://img.shields.io/badge/HACS-Custom-orange.svg)](https://hacs.xyz/)
+[![Version](https://img.shields.io/github/v/release/ferreirajcsf/small-grow-tent-controller)](https://github.com/ferreirajcsf/small-grow-tent-controller/releases)
+[![License](https://img.shields.io/github/license/ferreirajcsf/small-grow-tent-controller)](LICENSE)
+
 # Small Grow Tent Controller (Home Assistant Integration)
 
 A Home Assistant custom integration to control and monitor a small grow tent.
