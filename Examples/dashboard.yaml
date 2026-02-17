@@ -2,6 +2,9 @@
 #
 # This file is an example only. It is NOT installed/loaded automatically by HACS.
 #
+# Requires Small Grow Tent Controller v0.1.7+
+# Uses binary_sensor.use_* entities for automatic UI hiding
+#
 # Dependencies (custom cards):
 # - layout-card (grid-layout)
 # - Mushroom cards
