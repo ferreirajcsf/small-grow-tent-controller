@@ -608,15 +608,16 @@ views:
               - sensor.average_humidity
               - sensor.canopy_humidity
               - sensor.top_humidity
+
           - type: history-graph
             view_layout:
               grid-area: trend3
-            title: Trend (VPD / Dew)
+            title: Trend (VPD)
             hours_to_show: 24
             logarithmic_scale: false
             entities:
               - sensor.vpd
-              - sensor.dew_point
+
           - type: vertical-stack
             view_layout:
               grid-area: debug
