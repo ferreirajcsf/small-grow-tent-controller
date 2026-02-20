@@ -24,6 +24,8 @@ NUMBERS = [
     ("heater_hold_s", "Heater Hold Time", 10.0, 600.0, 5.0, 60.0, "s"),
     ("heater_max_run_s", "Heater Max Run Time", 0.0, 600.0, 5.0, 0.0, "s"),
     ("exhaust_hold_s", "Exhaust Hold Time", 10.0, 600.0, 5.0, 45.0, "s"),
+    ("exhaust_safety_max_temp_c", "Exhaust Safety Max Temperature", 10.0, 45.0, 0.5, 30.0, "°C"),
+    ("exhaust_safety_max_rh", "Exhaust Safety Max Humidity", 10.0, 99.0, 0.5, 75.0, "%"),
     ("humidifier_hold_s", "Humidifier Hold Time", 10.0, 600.0, 5.0, 45.0, "s"),
     ("dehumidifier_hold_s", "Dehumidifier Hold Time", 10.0, 600.0, 5.0, 45.0, "s"),
     ("leaf_temp_offset_c", "Leaf Temp Offset", -5.0, 5.0, 0.1, -1.5, "°C"),
@@ -53,7 +55,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_e
         # Hide device-specific tuning controls when that device is disabled
         if key in ("heater_hold_s", "heater_max_run_s") and not use_heater:
             continue
-        if key == "exhaust_hold_s" and not use_exhaust:
+        if key in ("exhaust_hold_s", "exhaust_safety_max_temp_c", "exhaust_safety_max_rh") and not use_exhaust:
             continue
         if key == "humidifier_hold_s" and not use_humidifier:
             continue

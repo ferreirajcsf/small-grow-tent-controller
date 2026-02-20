@@ -1,6 +1,6 @@
 DOMAIN = "small_grow_tent_controller"
 
-PLATFORMS = ["sensor", "switch", "select", "number", "time", "binary_sensor"]
+PLATFORMS = ["sensor", "switch", "select", "number", "time", "binary_sensor", "button"]
 
 # Fixed entity-id option keys
 CONF_LIGHT_SWITCH = "light_switch"
@@ -59,3 +59,8 @@ STAGE_TARGET_VPD_KPA = {
 }
 
 DEFAULT_STAGE = "Vegetative"
+
+# Exhaust safety override (optional)
+CONF_EXHAUST_SAFETY_OVERRIDE = "exhaust_safety_override"
+CONF_EXHAUST_SAFETY_MAX_TEMP_C = "exhaust_safety_max_temp_c"
+CONF_EXHAUST_SAFETY_MAX_RH = "exhaust_safety_max_rh"

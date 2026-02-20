@@ -31,6 +31,9 @@ from .const import (
     CONF_TOP_TEMP,
     CONF_CANOPY_RH,
     CONF_TOP_RH,
+    CONF_EXHAUST_SAFETY_OVERRIDE,
+    CONF_EXHAUST_SAFETY_MAX_TEMP_C,
+    CONF_EXHAUST_SAFETY_MAX_RH,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -331,6 +334,26 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             if exhaust_mode_sel != "Auto" and exhaust_eid:
                 desired = exhaust_mode_sel == "On"
+
+                # Safety: optionally prevent exhaust from being forced OFF above thresholds
+                if (
+                    exhaust_mode_sel == "Off"
+                    and data.get("exhaust_safety_override") is True
+                    and data.get("avg_temp_c") is not None
+                    and data.get("avg_rh") is not None
+                ):
+                    max_t = data.get("exhaust_safety_max_temp_c")
+                    max_rh = data.get("exhaust_safety_max_rh")
+                    avg_t = float(data["avg_temp_c"])
+                    avg_rh = float(data["avg_rh"])
+                    if (max_t is not None and avg_t >= float(max_t)) or (max_rh is not None and avg_rh >= float(max_rh)):
+                        desired = True
+                        data["debug_exhaust_reason"] = "override:off_blocked_by_safety"
+                    else:
+                        data["debug_exhaust_reason"] = "override:off"
+                elif exhaust_mode_sel != "Auto":
+                    data["debug_exhaust_reason"] = f"override:{exhaust_mode_sel.lower()}"
+
                 cur = self._switch_is_on(exhaust_eid)
                 if cur is not None and cur != desired:
                     await self._async_switch(exhaust_eid, desired)
@@ -370,6 +393,26 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         if exhaust_mode_sel != "Auto" and exhaust_eid:
             desired = exhaust_mode_sel == "On"
+
+            # Safety: optionally prevent exhaust from being forced OFF above thresholds
+            if (
+                exhaust_mode_sel == "Off"
+                and data.get("exhaust_safety_override") is True
+                and data.get("avg_temp_c") is not None
+                and data.get("avg_rh") is not None
+            ):
+                max_t = data.get("exhaust_safety_max_temp_c")
+                max_rh = data.get("exhaust_safety_max_rh")
+                avg_t = float(data["avg_temp_c"])
+                avg_rh = float(data["avg_rh"])
+                if (max_t is not None and avg_t >= float(max_t)) or (max_rh is not None and avg_rh >= float(max_rh)):
+                    desired = True
+                    data["debug_exhaust_reason"] = "override:off_blocked_by_safety"
+                else:
+                    data["debug_exhaust_reason"] = "override:off"
+            else:
+                data["debug_exhaust_reason"] = f"override:{exhaust_mode_sel.lower()}"
+
             cur = self._switch_is_on(exhaust_eid)
             if cur is not None and cur != desired:
                 await self._async_switch(exhaust_eid, desired)
@@ -976,6 +1019,11 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         humidifier_hold_eid = self._entity_id("number", "humidifier_hold_s")
         dehumidifier_hold_eid = self._entity_id("number", "dehumidifier_hold_s")
 
+        # Exhaust safety (optional)
+        exhaust_safety_override_eid = self._entity_id("switch", CONF_EXHAUST_SAFETY_OVERRIDE)
+        exhaust_safety_max_temp_eid = self._entity_id("number", CONF_EXHAUST_SAFETY_MAX_TEMP_C)
+        exhaust_safety_max_rh_eid = self._entity_id("number", CONF_EXHAUST_SAFETY_MAX_RH)
+
         # NEW: heater max run time number
         heater_max_run_eid = self._entity_id("number", "heater_max_run_s")
 
@@ -1017,6 +1065,11 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "exhaust_hold_s": self._num(exhaust_hold_eid, 45.0),
             "humidifier_hold_s": self._num(humidifier_hold_eid, 45.0),
             "dehumidifier_hold_s": self._num(dehumidifier_hold_eid, 45.0),
+
+            # Exhaust safety (optional)
+            "exhaust_safety_override": (self._get_entity_state(exhaust_safety_override_eid) == "on"),
+            "exhaust_safety_max_temp_c": self._num(exhaust_safety_max_temp_eid, 30.0),
+            "exhaust_safety_max_rh": self._num(exhaust_safety_max_rh_eid, 75.0),
 
             # NEW: user adjustable max run time (0 disables)
             "heater_max_run_s": self._num(heater_max_run_eid, 0.0),
