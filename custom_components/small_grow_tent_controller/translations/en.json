@@ -1,0 +1,66 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Small Grow Tent Controller",
+        "description": "Choose which devices you want this controller to manage.",
+        "data": {
+          "use_light": "Enable light control",
+          "use_circulation": "Enable circulation fan control",
+          "use_exhaust": "Enable exhaust fan control",
+          "use_heater": "Enable heater control",
+          "use_humidifier": "Enable humidifier control",
+          "use_dehumidifier": "Enable dehumidifier control"
+        }
+      },
+      "entities": {
+        "title": "Entities",
+        "description": "Select the entities to use (only enabled devices are shown).",
+        "data": {
+          "light_switch": "Light switch entity",
+          "circulation_switch": "Circulation fan switch entity",
+          "exhaust_switch": "Exhaust fan switch entity",
+          "heater_switch": "Heater switch entity",
+          "humidifier_switch": "Humidifier switch entity",
+          "dehumidifier_switch": "Dehumidifier switch entity",
+          "canopy_temp": "Canopy temperature sensor",
+          "top_temp": "Top temperature sensor",
+          "canopy_rh": "Canopy humidity sensor",
+          "top_rh": "Top humidity sensor"
+        }
+      }
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Device selection",
+        "description": "Enable/disable devices managed by the controller.",
+        "data": {
+          "use_light": "Enable light control",
+          "use_circulation": "Enable circulation fan control",
+          "use_exhaust": "Enable exhaust fan control",
+          "use_heater": "Enable heater control",
+          "use_humidifier": "Enable humidifier control",
+          "use_dehumidifier": "Enable dehumidifier control"
+        }
+      },
+      "entities": {
+        "title": "Entities",
+        "description": "Select the entities to use (only enabled devices are shown).",
+        "data": {
+          "light_switch": "Light switch entity",
+          "circulation_switch": "Circulation fan switch entity",
+          "exhaust_switch": "Exhaust fan switch entity",
+          "heater_switch": "Heater switch entity",
+          "humidifier_switch": "Humidifier switch entity",
+          "dehumidifier_switch": "Dehumidifier switch entity",
+          "canopy_temp": "Canopy temperature sensor",
+          "top_temp": "Top temperature sensor",
+          "canopy_rh": "Canopy humidity sensor",
+          "top_rh": "Top humidity sensor"
+        }
+      }
+    }
+  }
+}
