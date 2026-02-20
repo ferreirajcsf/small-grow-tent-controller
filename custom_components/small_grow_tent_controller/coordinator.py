@@ -47,9 +47,6 @@ STAGE_NIGHT_PROFILE: dict[str, dict[str, Any]] = {
     "Drying": {"exhaust_mode": "on", "dew_margin_add_c": 1.0},
 }
 
-# Exhaust forced ON during these stages (day + night)
-ALWAYS_EXHAUST_ON_STAGES: set[str] = {"Mid Flower", "Late Flower"}
-
 
 @dataclass
 class ControlState:
@@ -477,27 +474,13 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # ----------------------------
         # NORMAL MODE (non-drying)
         # ----------------------------
-
-        # Force exhaust ON for specific stages (day + night)
-        force_exhaust_on = enabled and (stage in ALWAYS_EXHAUST_ON_STAGES)
-        if force_exhaust_on:
-            data["debug_exhaust_policy"] = "forced_on_stage"
-            if (not exhaust_on) and exhaust_eid and self._can_toggle(self.control.last_exhaust_change, exhaust_hold):
-                await self._async_switch(exhaust_eid, True)
-                self.control.last_exhaust_change = now
-                _LOGGER.info("Exhaust ON: forced_on_stage (%s)", stage)
-            exhaust_on = True
-        else:
-            data["debug_exhaust_policy"] = "normal"
+        data["debug_exhaust_policy"] = "normal"
 
         # ---------- NIGHT MODE ----------
         if not is_day:
             profile = STAGE_NIGHT_PROFILE.get(stage, {"exhaust_mode": "on", "dew_margin_add_c": 0.0})
             exhaust_mode = profile.get("exhaust_mode", "on")
             dew_margin_night = dew_margin + float(profile.get("dew_margin_add_c", 0.0))
-
-            if force_exhaust_on:
-                exhaust_mode = "on"
 
             data["control_mode"] = f"night_{exhaust_mode}_dewpoint_protect"
 
@@ -665,8 +648,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     await self._async_switch(heater_eid, True)
                     self.control.last_heater_change = now
                 if (
-                    (not force_exhaust_on)
-                    and exhaust_on
+                    exhaust_on
                     and exhaust_eid
                     and self._can_toggle(self.control.last_exhaust_change, exhaust_hold)
                 ):
@@ -712,8 +694,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
             elif hard_limit == "rh_below_min":
                 if (
-                    (not force_exhaust_on)
-                    and exhaust_on
+                    exhaust_on
                     and exhaust_eid
                     and self._can_toggle(self.control.last_exhaust_change, exhaust_hold)
                 ):
@@ -779,8 +760,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     await self._async_switch(heater_eid, True)
                     self.control.last_heater_change = now
                 if (
-                    (not force_exhaust_on)
-                    and exhaust_on
+                    exhaust_on
                     and exhaust_eid
                     and self._can_toggle(self.control.last_exhaust_change, exhaust_hold)
                 ):
@@ -817,8 +797,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._async_switch(heater_eid, False)
                 self.control.last_heater_change = now
             if (
-                (not force_exhaust_on)
-                and exhaust_on
+                exhaust_on
                 and exhaust_eid
                 and self._can_toggle(self.control.last_exhaust_change, exhaust_hold)
             ):
@@ -844,8 +823,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._async_switch(heater_eid, False)
                 self.control.last_heater_change = now
             if (
-                (not force_exhaust_on)
-                and exhaust_on
+                exhaust_on
                 and exhaust_eid
                 and self._can_toggle(self.control.last_exhaust_change, exhaust_hold)
             ):
