@@ -89,8 +89,11 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return safe_float(st.state)
 
     def _get_option(self, key: str) -> Any:
-        # prefer options (editable) then data (initial)
-        return self.entry.options.get(key) or self.entry.data.get(key)
+        # Prefer options (editable) over data (initial).
+        # IMPORTANT: options can legitimately be False/0/"" — don't treat those as "missing".
+        if key in self.entry.options:
+            return self.entry.options[key]
+        return self.entry.data.get(key)
 
     def _now(self) -> datetime:
         return dt_util.now()
