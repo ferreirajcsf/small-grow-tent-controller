@@ -7,6 +7,7 @@
 # - Mushroom cards
 # - button-card
 # - card-mod
+# - fold-entity-row
 #
 # Usage:
 # 1) Home Assistant → Settings → Dashboards → Add Dashboard → YAML mode
@@ -31,11 +32,10 @@ views:
         layout_type: custom:grid-layout
         layout:
           grid-template-columns: 1fr 1fr 1fr
-          grid-template-rows: auto auto auto auto auto auto auto
+          grid-template-rows: auto auto auto auto auto auto
           grid-template-areas: |
             "small calc env"
             "tuning devices limits"
-            "overrides overrides overrides"
             "cycle cycle cycle"
             "trend1 trend2 trend3"
             "debug debug debug"
@@ -68,10 +68,7 @@ views:
                   action: more-info
                   entity: update.small_grow_tent_controller_update
                 card_mod:
-                  style: >
-                    /* Color the subtitle amber + slightly bolder when an update
-                    is available */
-
+                  style: |
                     ha-card .subtitle {
                       color: [[[ 
                         const u = states['update.small_grow_tent_controller_update'];
@@ -393,78 +390,29 @@ views:
                         style: >
                           ha-card { padding-top: 8px !important; padding-bottom:
                           8px !important; }
-              - type: conditional
-                conditions:
-                  - entity: binary_sensor.use_exhaust_fan_control
-                    state: 'on'
-                card:
-                  type: custom:layout-card
-                  layout_type: grid
-                  layout:
-                    grid-template-columns: 1fr
-                    grid-auto-rows: auto
-                    grid-row-gap: 8px
-                  cards:
-                    - type: custom:mushroom-title-card
-                      title: Exhaust Safety
-                      subtitle: Prevent forced OFF above limits
-                      alignment: center
-                    - type: custom:layout-card
-                      layout_type: grid
-                      layout:
-                        grid-template-columns: repeat(2, 1fr)
-                        grid-auto-rows: 116px
-                        grid-column-gap: 12px
-                        grid-row-gap: 12px
-                      cards:
-                        - type: custom:mushroom-entity-card
-                          entity: switch.exhaust_safety_override
-                          name: Safety Override
-                          icon: mdi:shield-check
-                          tap_action:
-                            action: toggle
-                          fill_container: true
-                        - type: custom:mushroom-number-card
-                          entity: number.exhaust_safety_max_temperature
-                          name: Max Temp (°C)
-                          icon: mdi:thermometer-alert
-                          display_mode: buttons
-                          fill_container: true
-                          card_mod:
-                            style: >
-                              ha-card { padding-top: 8px !important;
-                              padding-bottom: 8px !important; }
-                        - type: custom:mushroom-number-card
-                          entity: number.exhaust_safety_max_humidity
-                          name: Max RH (%)
-                          icon: mdi:water-alert
-                          display_mode: buttons
-                          fill_container: true
-                          card_mod:
-                            style: >
-                              ha-card { padding-top: 8px !important;
-                              padding-bottom: 8px !important; }
-                        - type: custom:mushroom-template-card
-                          primary: ''
-                          secondary: ''
-                          icon: mdi:blank
-                          fill_container: true
-                          card_mod:
-                            style: |
-                              ha-card { visibility: hidden; }
           - type: vertical-stack
             view_layout:
               grid-area: devices
             cards:
               - type: custom:mushroom-title-card
                 title: Devices
-                subtitle: Device Entity Controls
+                subtitle: Device Entity Controls + Overrides
                 alignment: center
+              - type: custom:mushroom-entity-card
+                entity: button.return_all_devices_to_auto
+                name: Return All Devices to Auto
+                icon: mdi:backup-restore
+                tap_action:
+                  action: call-service
+                  service: button.press
+                  target:
+                    entity_id: button.return_all_devices_to_auto
+                fill_container: true
               - type: custom:layout-card
                 layout_type: grid
                 layout:
                   grid-template-columns: repeat(2, 1fr)
-                  grid-auto-rows: 116px
+                  grid-auto-rows: auto
                   grid-column-gap: 12px
                   grid-row-gap: 12px
                 cards:
@@ -473,73 +421,128 @@ views:
                       - entity: binary_sensor.use_light_control
                         state: 'on'
                     card:
-                      type: custom:mushroom-entity-card
-                      entity: switch.lightgrowtent
-                      name: Grow Light
-                      icon: mdi:lightbulb-on-10
-                      tap_action:
-                        action: toggle
-                      fill_container: true
+                      type: vertical-stack
+                      cards:
+                        - type: custom:mushroom-entity-card
+                          entity: switch.lightgrowtent
+                          name: Grow Light
+                          icon: mdi:lightbulb-on-10
+                          tap_action:
+                            action: toggle
+                          fill_container: true
+                        - type: custom:mushroom-select-card
+                          entity: select.light_mode
+                          name: Mode
+                          icon: mdi:tune-variant
+                          fill_container: true
                   - type: conditional
                     conditions:
                       - entity: binary_sensor.use_heater_control
                         state: 'on'
                     card:
-                      type: custom:mushroom-entity-card
-                      entity: switch.heatergrowtent
-                      name: Heater
-                      icon: mdi:radiator
-                      tap_action:
-                        action: toggle
-                      fill_container: true
+                      type: vertical-stack
+                      cards:
+                        - type: custom:mushroom-entity-card
+                          entity: switch.heatergrowtent
+                          name: Heater
+                          icon: mdi:radiator
+                          tap_action:
+                            action: toggle
+                          fill_container: true
+                        - type: custom:mushroom-select-card
+                          entity: select.heater_mode
+                          name: Mode
+                          icon: mdi:tune-variant
+                          fill_container: true
                   - type: conditional
                     conditions:
                       - entity: binary_sensor.use_circulation_fan_control
                         state: 'on'
                     card:
-                      type: custom:mushroom-entity-card
-                      entity: switch.ventilationgrowtent
-                      name: Circulation Fan
-                      icon: mdi:fan
-                      tap_action:
-                        action: toggle
-                      fill_container: true
+                      type: vertical-stack
+                      cards:
+                        - type: custom:mushroom-entity-card
+                          entity: switch.ventilationgrowtent
+                          name: Circulation Fan
+                          icon: mdi:fan
+                          tap_action:
+                            action: toggle
+                          fill_container: true
+                        - type: custom:mushroom-select-card
+                          entity: select.circulation_mode
+                          name: Mode
+                          icon: mdi:tune-variant
+                          fill_container: true
                   - type: conditional
                     conditions:
                       - entity: binary_sensor.use_exhaust_fan_control
                         state: 'on'
                     card:
-                      type: custom:mushroom-entity-card
-                      entity: switch.exhaustgrowtent
-                      name: Exhaust Fan
-                      icon: mdi:fan-chevron-up
-                      tap_action:
-                        action: toggle
-                      fill_container: true
+                      type: vertical-stack
+                      cards:
+                        - type: custom:mushroom-entity-card
+                          entity: switch.exhaustgrowtent
+                          name: Exhaust Fan
+                          icon: mdi:fan-chevron-up
+                          tap_action:
+                            action: toggle
+                          fill_container: true
+                        - type: custom:mushroom-select-card
+                          entity: select.exhaust_mode
+                          name: Mode
+                          icon: mdi:tune-variant
+                          fill_container: true
+                        - type: entities
+                          entities:
+                            - type: custom:fold-entity-row
+                              head:
+                                type: section
+                                label: Exhaust Safety
+                              entities:
+                                - entity: switch.exhaust_safety_override
+                                  name: Safety Override
+                                - entity: number.exhaust_safety_max_temperature
+                                  name: Max Temp (°C)
+                                - entity: number.exhaust_safety_max_humidity
+                                  name: Max RH (%)
                   - type: conditional
                     conditions:
                       - entity: binary_sensor.use_humidifier_control
                         state: 'on'
                     card:
-                      type: custom:mushroom-entity-card
-                      entity: switch.humidifiergrowtent
-                      name: Humidifier
-                      icon: mdi:air-humidifier
-                      tap_action:
-                        action: toggle
-                      fill_container: true
+                      type: vertical-stack
+                      cards:
+                        - type: custom:mushroom-entity-card
+                          entity: switch.humidifiergrowtent
+                          name: Humidifier
+                          icon: mdi:air-humidifier
+                          tap_action:
+                            action: toggle
+                          fill_container: true
+                        - type: custom:mushroom-select-card
+                          entity: select.humidifier_mode
+                          name: Mode
+                          icon: mdi:tune-variant
+                          fill_container: true
                   - type: conditional
                     conditions:
                       - entity: binary_sensor.use_dehumidifier_control
                         state: 'on'
                     card:
-                      type: custom:mushroom-entity-card
-                      entity: switch.dehumidifiergrowtent
-                      name: Dehumidifier
-                      icon: mdi:water-off
-                      tap_action:
-                        action: toggle
-                      fill_container: true
+                      type: vertical-stack
+                      cards:
+                        - type: custom:mushroom-entity-card
+                          entity: switch.dehumidifiergrowtent
+                          name: Dehumidifier
+                          icon: mdi:water-off
+                          tap_action:
+                            action: toggle
+                          fill_container: true
+                        - type: custom:mushroom-select-card
+                          entity: select.dehumidifier_mode
+                          name: Mode
+                          icon: mdi:tune-variant
+                          fill_container: true
           - type: vertical-stack
             view_layout:
               grid-area: limits
@@ -596,92 +599,6 @@ views:
                       style: >
                         ha-card { padding-top: 8px !important; padding-bottom:
                         8px !important; }
-          - type: vertical-stack
-            view_layout:
-              grid-area: overrides
-            cards:
-              - type: custom:mushroom-title-card
-                title: Overrides
-                subtitle: Per-device Auto / On / Off + global reset
-                alignment: center
-              - type: custom:mushroom-entity-card
-                entity: button.return_all_devices_to_auto
-                name: Return All Devices to Auto
-                icon: mdi:backup-restore
-                tap_action:
-                  action: call-service
-                  service: button.press
-                  target:
-                    entity_id: button.return_all_devices_to_auto
-                fill_container: true
-              - type: custom:layout-card
-                layout_type: grid
-                layout:
-                  grid-template-columns: repeat(3, 1fr)
-                  grid-auto-rows: 96px
-                  grid-column-gap: 12px
-                  grid-row-gap: 12px
-                cards:
-                  - type: conditional
-                    conditions:
-                      - entity: binary_sensor.use_light_control
-                        state: 'on'
-                    card:
-                      type: custom:mushroom-select-card
-                      entity: select.light_mode
-                      name: Light Mode
-                      icon: mdi:lightbulb-on-10
-                      fill_container: true
-                  - type: conditional
-                    conditions:
-                      - entity: binary_sensor.use_circulation_fan_control
-                        state: 'on'
-                    card:
-                      type: custom:mushroom-select-card
-                      entity: select.circulation_mode
-                      name: Circulation Mode
-                      icon: mdi:fan
-                      fill_container: true
-                  - type: conditional
-                    conditions:
-                      - entity: binary_sensor.use_exhaust_fan_control
-                        state: 'on'
-                    card:
-                      type: custom:mushroom-select-card
-                      entity: select.exhaust_mode
-                      name: Exhaust Mode
-                      icon: mdi:fan-chevron-up
-                      fill_container: true
-                  - type: conditional
-                    conditions:
-                      - entity: binary_sensor.use_heater_control
-                        state: 'on'
-                    card:
-                      type: custom:mushroom-select-card
-                      entity: select.heater_mode
-                      name: Heater Mode
-                      icon: mdi:radiator
-                      fill_container: true
-                  - type: conditional
-                    conditions:
-                      - entity: binary_sensor.use_humidifier_control
-                        state: 'on'
-                    card:
-                      type: custom:mushroom-select-card
-                      entity: select.humidifier_mode
-                      name: Humidifier Mode
-                      icon: mdi:air-humidifier
-                      fill_container: true
-                  - type: conditional
-                    conditions:
-                      - entity: binary_sensor.use_dehumidifier_control
-                        state: 'on'
-                    card:
-                      type: custom:mushroom-select-card
-                      entity: select.dehumidifier_mode
-                      name: Dehumidifier Mode
-                      icon: mdi:water-off
-                      fill_container: true
           - type: vertical-stack
             view_layout:
               grid-area: cycle
