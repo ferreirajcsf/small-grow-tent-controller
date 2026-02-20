@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.12
+- Add optional exhaust safety override to prevent the exhaust fan from being forced OFF above user-defined temperature/humidity thresholds.
+- Add a global "Return All Devices to Auto" button to reset all device override modes back to Auto.
+
 ## 0.1.11
 - Add per-device override mode selectors (Auto / On / Off) for light, circulation, exhaust, heater, humidifier, and dehumidifier.
 - Forced modes override controller logic and restore after Home Assistant restarts.
