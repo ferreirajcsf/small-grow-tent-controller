@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.11
+- Add per-device override mode selectors (Auto / On / Off) for light, circulation, exhaust, heater, humidifier, and dehumidifier.
+- Forced modes override controller logic and restore after Home Assistant restarts.
+
 ## 0.1.10
 - Remove forced always-on exhaust behavior in Mid/Late Flower stages; exhaust is now controlled normally across all stages.
 

@@ -92,6 +92,18 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return self.entry.options[key]
         return self.entry.data.get(key)
 
+
+    def _get_mode(self, mode_key: str) -> str:
+        """Return per-device mode from the corresponding select entity: Auto / On / Off."""
+        eid = self._entity_id("select", mode_key)
+        st = self.hass.states.get(eid)
+        if st is None:
+            return "Auto"
+        val = st.state
+        if val in ("Auto", "On", "Off"):
+            return val
+        return "Auto"
+
     def _now(self) -> datetime:
         return dt_util.now()
 
@@ -239,48 +251,149 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         data["debug_is_day"] = is_day
 
+        # Per-device manual override modes (Select: Auto / On / Off)
+        light_mode = self._get_mode("light_mode") if light_eid else "Auto"
+        circ_mode = self._get_mode("circulation_mode") if circ_eid else "Auto"
+        exhaust_mode_sel = self._get_mode("exhaust_mode") if exhaust_eid else "Auto"
+        heater_mode_sel = self._get_mode("heater_mode") if heater_eid else "Auto"
+        humidifier_mode_sel = self._get_mode("humidifier_mode") if humidifier_eid else "Auto"
+        dehumidifier_mode_sel = self._get_mode("dehumidifier_mode") if dehumidifier_eid else "Auto"
+
+
         # --- Light decision reasoning ---
         cur_light_state = self._switch_is_on(light_eid)
-        if light_eid is None:
-            data["debug_light_reason"] = "light_entity_not_configured"
-        elif cur_light_state is None:
-            data["debug_light_reason"] = "light_state_unknown"
-        elif drying:
-            data["debug_light_reason"] = "drying -> force_off"
-        elif is_day and not cur_light_state:
-            data["debug_light_reason"] = "schedule_day_window -> turn_on"
-        elif (not is_day) and cur_light_state:
-            data["debug_light_reason"] = "schedule_night_window -> turn_off"
-        else:
-            data["debug_light_reason"] = "schedule_ok -> no_change"
 
-        # FAILSAFE: light policy
-        if light_eid and cur_light_state is not None:
-            if drying:
-                # Always force OFF, no matter what the schedule is.
-                if cur_light_state and self._can_toggle(self.control.last_light_change, 10):
-                    await self._async_switch(light_eid, False)
-                    self.control.last_light_change = now
+        if light_mode != "Auto":
+            desired = light_mode == "On"
+            data["debug_light_reason"] = f"override:{light_mode.lower()}"
+            if light_eid and cur_light_state is not None and cur_light_state != desired:
+                await self._async_switch(light_eid, desired)
+                self.control.last_light_change = now
+            # Skip automatic light logic when overridden
+            light_eid = None
+        else:
+            if light_eid is None:
+                data["debug_light_reason"] = "light_entity_not_configured"
+            elif cur_light_state is None:
+                data["debug_light_reason"] = "light_state_unknown"
+            elif drying:
+                data["debug_light_reason"] = "drying -> force_off"
+            elif is_day and not cur_light_state:
+                data["debug_light_reason"] = "schedule_day_window -> turn_on"
+            elif (not is_day) and cur_light_state:
+                data["debug_light_reason"] = "schedule_night_window -> turn_off"
             else:
-                # Normal behavior: light matches schedule.
-                if (not is_day) and cur_light_state:
-                    if self._can_toggle(self.control.last_light_change, 10):
+                data["debug_light_reason"] = "schedule_ok -> no_change"
+
+            # FAILSAFE: light policy
+            if light_eid and cur_light_state is not None:
+                if drying:
+                    # Always force OFF, no matter what the schedule is.
+                    if cur_light_state and self._can_toggle(self.control.last_light_change, 10):
                         await self._async_switch(light_eid, False)
                         self.control.last_light_change = now
-                elif is_day and (not cur_light_state):
-                    if self._can_toggle(self.control.last_light_change, 10):
-                        await self._async_switch(light_eid, True)
-                        self.control.last_light_change = now
+                else:
+                    # Normal behavior: light matches schedule.
+                    if (not is_day) and cur_light_state:
+                        if self._can_toggle(self.control.last_light_change, 10):
+                            await self._async_switch(light_eid, False)
+                            self.control.last_light_change = now
+                    elif is_day and (not cur_light_state):
+                        if self._can_toggle(self.control.last_light_change, 10):
+                            await self._async_switch(light_eid, True)
+                            self.control.last_light_change = now
 
-        # Circulation fan always on when controller enabled
-        if enabled and circ_eid:
+        # Circulation fan behavior (default: always ON when controller enabled)
+        if circ_mode != "Auto" and circ_eid:
+            desired = circ_mode == "On"
+            data["debug_circulation_reason"] = f"override:{circ_mode.lower()}"
             cur_circ = self._switch_is_on(circ_eid)
-            if cur_circ is not None and (not cur_circ):
-                await self._async_switch(circ_eid, True)
+            if cur_circ is not None and cur_circ != desired:
+                await self._async_switch(circ_eid, desired)
+            # Skip auto control when overridden
+            circ_eid = None
+        else:
+            if enabled and circ_eid:
+                cur_circ = self._switch_is_on(circ_eid)
+                if cur_circ is not None and (not cur_circ):
+                    await self._async_switch(circ_eid, True)
 
         if not enabled:
             data["control_mode"] = "disabled"
+
+            # Even when the controller is disabled, honor per-device forced modes.
+            if heater_mode_sel != "Auto" and heater_eid:
+                desired = heater_mode_sel == "On"
+                cur = self._switch_is_on(heater_eid)
+                if cur is not None and cur != desired:
+                    await self._async_switch(heater_eid, desired)
+                    self.control.last_heater_change = now
+
+            if exhaust_mode_sel != "Auto" and exhaust_eid:
+                desired = exhaust_mode_sel == "On"
+                cur = self._switch_is_on(exhaust_eid)
+                if cur is not None and cur != desired:
+                    await self._async_switch(exhaust_eid, desired)
+                    self.control.last_exhaust_change = now
+
+            if humidifier_mode_sel != "Auto" and humidifier_eid:
+                desired = humidifier_mode_sel == "On"
+                cur = self._switch_is_on(humidifier_eid)
+                if cur is not None and cur != desired:
+                    await self._async_switch(humidifier_eid, desired)
+                    self.control.last_humidifier_change = now
+
+            if dehumidifier_mode_sel != "Auto" and dehumidifier_eid:
+                desired = dehumidifier_mode_sel == "On"
+                cur = self._switch_is_on(dehumidifier_eid)
+                if cur is not None and cur != desired:
+                    await self._async_switch(dehumidifier_eid, desired)
+                    self.control.last_dehumidifier_change = now
+
             return data
+
+        # Current device states (read even if sensors are missing; needed for overrides)
+        heater_on = self._switch_is_on(heater_eid) is True
+        exhaust_on = self._switch_is_on(exhaust_eid) is True
+        humidifier_on = self._switch_is_on(humidifier_eid) is True
+        dehumidifier_on = self._switch_is_on(dehumidifier_eid) is True
+
+        # Apply per-device forced modes (On/Off). Forced modes bypass controller logic.
+        if heater_mode_sel != "Auto" and heater_eid:
+            desired = heater_mode_sel == "On"
+            cur = self._switch_is_on(heater_eid)
+            if cur is not None and cur != desired:
+                await self._async_switch(heater_eid, desired)
+                self.control.last_heater_change = now
+            heater_on = desired
+            heater_eid = None  # skip auto control
+
+        if exhaust_mode_sel != "Auto" and exhaust_eid:
+            desired = exhaust_mode_sel == "On"
+            cur = self._switch_is_on(exhaust_eid)
+            if cur is not None and cur != desired:
+                await self._async_switch(exhaust_eid, desired)
+                self.control.last_exhaust_change = now
+            exhaust_on = desired
+            exhaust_eid = None  # skip auto control
+
+        if humidifier_mode_sel != "Auto" and humidifier_eid:
+            desired = humidifier_mode_sel == "On"
+            cur = self._switch_is_on(humidifier_eid)
+            if cur is not None and cur != desired:
+                await self._async_switch(humidifier_eid, desired)
+                self.control.last_humidifier_change = now
+            humidifier_on = desired
+            humidifier_eid = None  # skip auto control
+
+        if dehumidifier_mode_sel != "Auto" and dehumidifier_eid:
+            desired = dehumidifier_mode_sel == "On"
+            cur = self._switch_is_on(dehumidifier_eid)
+            if cur is not None and cur != desired:
+                await self._async_switch(dehumidifier_eid, desired)
+                self.control.last_dehumidifier_change = now
+            dehumidifier_on = desired
+            dehumidifier_eid = None  # skip auto control
 
         avg_temp = data.get("avg_temp_c")
         avg_rh = data.get("avg_rh")
@@ -290,12 +403,6 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if avg_temp is None or avg_rh is None or dew is None or vpd is None:
             data["control_mode"] = "waiting_for_sensors"
             return data
-
-        # Current device states
-        heater_on = self._switch_is_on(heater_eid) is True
-        exhaust_on = self._switch_is_on(exhaust_eid) is True
-        humidifier_on = self._switch_is_on(humidifier_eid) is True
-        dehumidifier_on = self._switch_is_on(dehumidifier_eid) is True
 
         # ----------------------------
         # HEATER SAFETY: max continuous run time
