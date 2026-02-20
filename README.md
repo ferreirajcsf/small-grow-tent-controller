@@ -96,7 +96,7 @@ Install the following custom cards via HACS:
 4. Copy the contents of `examples/dashboard.yaml`
 5. Adjust entity IDs to match your setup
 
-![Dashboard example](images/Screenshot_GTC.png)
+![Dashboard example](images/Screenshot_GTC_v0.1.13.png)
 
 ---
 
