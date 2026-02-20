@@ -26,7 +26,7 @@ CONF_TOP_RH = "top_rh"
 # Defaults (your entities)
 DEFAULTS = {
     CONF_LIGHT_SWITCH: "switch.lightgrowtent",
-    CONF_CIRC_SWITCH: "switch.ventilationgrowtent",  # you called this circulation/ventilation
+    CONF_CIRC_SWITCH: "switch.circulationgrowtent",
     CONF_EXHAUST_SWITCH: "switch.exhaustgrowtent",
     CONF_HEATER_SWITCH: "switch.heatergrowtent",
     CONF_HUMIDIFIER_SWITCH: "switch.humidifiergrowtent",

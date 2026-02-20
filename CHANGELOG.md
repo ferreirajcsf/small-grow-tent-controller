@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.13
+- Fix default circulation fan entity id (switch.circulationgrowtent).
+- Update example dashboard to use the corrected circulation fan entity id.
+
 ## 0.1.12
 - Add optional exhaust safety override to prevent the exhaust fan from being forced OFF above user-defined temperature/humidity thresholds.
 - Add a global "Return All Devices to Auto" button to reset all device override modes back to Auto.
