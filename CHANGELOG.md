@@ -1,12 +1,37 @@
 # Changelog
 
+## [0.1.17] - 2026-02-21
+
+### Changed
+
+- **Growth stages renamed and restructured** — the six growth stages have been updated to better reflect a typical cannabis grow cycle:
+
+  | Stage | Default VPD |
+  |---|---|
+  | Seedling | 0.70 kPa |
+  | Early Vegetative | 0.95 kPa |
+  | Late Vegetative | 1.10 kPa |
+  | Early Bloom | 1.25 kPa |
+  | Late Bloom | 1.45 kPa |
+  | Drying | 0.90 kPa |
+
+  Previous stages (`Vegetative`, `Early Flower`, `Mid Flower`, `Late Flower`) have been removed and replaced with `Early Vegetative`, `Late Vegetative`, `Early Bloom`, and `Late Bloom`.
+
+- **Default stage** changed from `Vegetative` to `Early Vegetative`.
+
+### ⚠️ Breaking Change
+
+If you have any Home Assistant automations, scripts, or dashboard cards that reference the old stage names by string (e.g. `option: "Vegetative"` or `option: "Early Flower"`), these will need updating to the new names. On first load after upgrading, if the stored stage state is no longer valid the controller will automatically fall back to `Early Vegetative`.
+
+---
+
 ## [0.1.16] - 2026-02-21
 
 ### New Features
 
 - **VPD Target number entity** — the VPD target for each growth stage is now a user-adjustable slider (0.40–2.50 kPa, step 0.01 kPa) visible on the device card under Limits. When you change the growth stage, the slider automatically resets to that stage's default on the next controller cycle (~10 seconds). You can nudge it freely at any time without changing stage.
 
-  Default targets per stage:
+  Default targets per stage (as of v0.1.16, superseded in v0.1.17):
   | Stage | Default VPD |
   |---|---|
   | Seedling | 0.70 kPa |

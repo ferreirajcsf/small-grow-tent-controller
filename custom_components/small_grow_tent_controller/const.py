@@ -1,5 +1,5 @@
 DOMAIN = "small_grow_tent_controller"
-VERSION = "0.1.16"
+VERSION = "0.1.17"
 
 PLATFORMS = ["sensor", "switch", "select", "number", "time", "binary_sensor", "button"]
 
@@ -51,15 +51,15 @@ DEFAULT_DEVICE_ENABLE = {
 # Default VPD targets (kPa) per growth stage — used as the slider reset value
 # when the user changes stage. Can be overridden freely via the VPD Target number entity.
 STAGE_TARGET_VPD_KPA = {
-    "Seedling":     0.70,
-    "Vegetative":   1.00,
-    "Early Flower": 1.10,
-    "Mid Flower":   1.30,
-    "Late Flower":  1.50,
-    "Drying":       0.90,
+    "Seedling":          0.70,
+    "Early Vegetative":  0.95,
+    "Late Vegetative":   1.10,
+    "Early Bloom":       1.25,
+    "Late Bloom":        1.45,
+    "Drying":            0.90,
 }
 
-DEFAULT_STAGE = "Vegetative"
+DEFAULT_STAGE = "Early Vegetative"
 
 # Exhaust safety override (optional)
 CONF_EXHAUST_SAFETY_OVERRIDE  = "exhaust_safety_override"
