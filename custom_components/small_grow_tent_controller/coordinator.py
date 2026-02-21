@@ -76,6 +76,11 @@ class ControlState:
     # Sensor availability tracking
     sensors_were_unavailable: bool = False
 
+    # Suppress sensor-unavailable warning/notification on the very first poll
+    # cycle after startup — sensors are routinely unavailable for a few seconds
+    # while HA initialises, and logging at that point is misleading noise.
+    is_first_poll: bool = True
+
     # Stage change detection (for VPD target auto-reset)
     last_stage: str = ""
 
@@ -246,23 +251,29 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if not sensors_ok:
             if not self.control.sensors_were_unavailable:
                 self.control.sensors_were_unavailable = True
-                persistent_notification.async_create(
-                    self.hass,
-                    message=(
-                        f"**{self.entry.title}** — one or more environment sensors "
-                        f"are unavailable or returning invalid readings.\n\n"
-                        f"Automatic control has been paused until all sensors "
-                        f"report valid values.\n\n"
-                        f"Check: **Settings → Devices & Services → {self.entry.title} → Configure** "
-                        f"to verify the assigned sensor entities."
-                    ),
-                    title="Grow Tent: Sensors Unavailable",
-                    notification_id=notif_id,
-                )
-                _LOGGER.warning(
-                    "%s: one or more sensors unavailable — controller paused",
-                    self.entry.title,
-                )
+                # Suppress the warning and persistent notification on the very
+                # first poll after startup — sensors are routinely unavailable
+                # for a few seconds while HA initialises its entity registry.
+                # This avoids misleading "sensors unavailable" noise in the log
+                # and on the dashboard every time HASS restarts.
+                if not self.control.is_first_poll:
+                    persistent_notification.async_create(
+                        self.hass,
+                        message=(
+                            f"**{self.entry.title}** — one or more environment sensors "
+                            f"are unavailable or returning invalid readings.\n\n"
+                            f"Automatic control has been paused until all sensors "
+                            f"report valid values.\n\n"
+                            f"Check: **Settings → Devices & Services → {self.entry.title} → Configure** "
+                            f"to verify the assigned sensor entities."
+                        ),
+                        title="Grow Tent: Sensors Unavailable",
+                        notification_id=notif_id,
+                    )
+                    _LOGGER.warning(
+                        "%s: one or more sensors unavailable — controller paused",
+                        self.entry.title,
+                    )
         else:
             if self.control.sensors_were_unavailable:
                 self.control.sensors_were_unavailable = False
@@ -271,6 +282,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     "%s: all sensors restored — controller resuming",
                     self.entry.title,
                 )
+
+        # Clear the first-poll flag regardless of sensor state — from this
+        # point on, any sensor dropout is a genuine runtime event.
+        self.control.is_first_poll = False
 
     # ------------------------------------------------------------------ #
     #  Manual override application                                         #

@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.18] - 2026-02-21
+
+### Fixed
+
+- **Suppressed false "sensors unavailable" warning on startup** — on the first poll cycle after HASS restarts, environment sensors are routinely unavailable for a few seconds while Home Assistant initialises its entity registry. The controller now silently skips the warning log message and persistent dashboard notification during this first cycle only. If sensors are still unavailable on the second poll onwards, the warning fires as normal — meaning it only appears for genuine runtime sensor dropouts, not routine restarts.
+
+### No Breaking Changes
+
+Update via HACS and restart Home Assistant. No reconfiguration needed.
+
+---
+
 ## [0.1.17] - 2026-02-21
 
 ### Changed
