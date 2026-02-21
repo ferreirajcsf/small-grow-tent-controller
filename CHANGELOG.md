@@ -1,33 +1,67 @@
 # Changelog
 
+## [0.1.16] - 2026-02-21
+
+### New Features
+
+- **VPD Target number entity** — the VPD target for each growth stage is now a user-adjustable slider (0.40–2.50 kPa, step 0.01 kPa) visible on the device card under Limits. When you change the growth stage, the slider automatically resets to that stage's default on the next controller cycle (~10 seconds). You can nudge it freely at any time without changing stage.
+
+  Default targets per stage:
+  | Stage | Default VPD |
+  |---|---|
+  | Seedling | 0.70 kPa |
+  | Vegetative | 1.00 kPa |
+  | Early Flower | 1.10 kPa |
+  | Mid Flower | 1.30 kPa |
+  | Late Flower | 1.50 kPa |
+  | Drying | 0.90 kPa |
+
+- **VPD Chase switch** — a new "VPD Chase" switch lets you disable the VPD chasing logic entirely. When OFF, the controller operates in limits-only mode during the day: it only acts when temperature or humidity breach their min/max limits, and leaves all devices neutral otherwise. When ON (default), behaviour is identical to previous versions. Useful if you want simple thermostat/humidistat control without the VPD layer.
+
+### Changes
+
+- Removed all references to specific plant types from code comments and documentation. The integration works for any grow tent.
+- Schema version bumped to v3. Existing installations migrate automatically — no reconfiguration needed.
+
+### No Breaking Changes
+
+After updating via HACS and restarting Home Assistant, two new entities appear automatically:
+- **VPD Target** (number slider) — initialises to your current stage's default
+- **VPD Chase** (switch) — defaults to ON
+
+All existing entity IDs, stored states, and settings are preserved.
+
+---
+
+## [0.1.15] - 2026-02-21
+
+### New Features
+- **Last Action sensor** — shows what the controller last did and when (e.g. `Exhaust ON · temp_above_max @ 14:32:01`).
+- **Sensors Unavailable binary sensor** — turns ON when environment sensors drop off or return invalid readings.
+- **Persistent notification on sensor dropout** — fires when sensors go missing, auto-dismisses on recovery.
+
+### Improvements
+- `coordinator.py` refactored into focused sub-methods for readability and maintainability.
+
+---
+
 ## [0.1.14] - 2026-02-20
 
 ### Fixed
-- **Removed `device.py`** — dead-code stub that referenced undefined constants (`CONF_NAME`, `DEFAULT_NAME`, `INTEGRATION_VERSION`) and would cause an import error on load. Its `device_info_for_entry` helper has been reimplemented correctly in `__init__.py`.
-- **`device_info` added to all entity platforms** (`sensor`, `switch`, `number`, `select`, `time`, `button`, `binary_sensor`). All entities now group under a single device card in the HA UI, named after the config entry title. Multiple tent instances each get their own device.
-- **Heater on-time tracking fixed** — the `heater_on_since` timestamp is now captured from the real hardware switch state *before* forced overrides are applied, preventing the max-run safety timer from being skipped when a manual override is active.
-- **`blocking=True` on heater safety trips** — the max-run lockout force-off call now uses `blocking=True` to guarantee the switch command completes before control logic continues. All other switch calls remain `blocking=False` for performance.
-- **Migration guard for unknown versions** — `async_migrate_entry` now explicitly returns `False` for unrecognised schema versions instead of silently returning `True`, preventing silent data corruption from future migration bugs.
-- **Hardcoded personal entity IDs removed from `const.py`** — `DEFAULTS` now uses empty strings so the config flow no longer pre-fills with the author's own entity IDs for new installations.
-- **Light schedule default mismatch fixed** — `time.py` defaults (`light_on=09:00`, `light_off=21:00`) now match the coordinator fallbacks exactly, eliminating a one-hour discrepancy on first boot.
-- **`state_class` added to VPD and dew point sensors** — both sensors now have `SensorStateClass.MEASUREMENT` so HA logs them in the long-term statistics database.
+- Removed broken `device.py` dead-code stub.
+- `device_info` added to all entity platforms — all entities now group under one device card.
+- Heater on-time tracking fixed.
+- `blocking=True` on heater safety trips.
+- Migration guard for unknown schema versions.
+- Hardcoded personal entity IDs removed from defaults.
+- Light schedule default mismatch fixed.
+- `state_class` added to VPD and dew point sensors.
 
 ### Changed
-- **Debug sensors hidden by default** — all `debug_*` sensors are created with `entity_registry_enabled_default = False`. They remain available and can be enabled individually via Settings → Entities. This keeps the default dashboard clean.
-- **`VERSION` constant added to `const.py`** — used by `device_info_for_entry` for the `sw_version` field.
-- **Light schedule defaults unified** — a module-level `_DEFAULT_LIGHT_ON` / `_DEFAULT_LIGHT_OFF` constant in `coordinator.py` is the single source of truth for fallback schedule times.
+- Debug sensors hidden by default (`entity_registry_enabled_default = False`).
 
 ---
 
 ## [0.1.13] - 2025-XX-XX
 
-- Heater max run time safety feature with configurable lockout.
-- Exhaust safety override switch (prevents force-off above temp/RH thresholds).
-- Per-device manual override selects (Auto / On / Off) for all controlled devices.
-- "Return All Devices to Auto" button entity.
-- Humidifier and dehumidifier support added to all control modes.
-- Night-mode dewpoint protection with stage-specific exhaust profiles.
-- VPD-chase day mode with hard-limit and drying-mode overrides.
-- Heater pulse plan (proportional on/off timing based on temperature error).
-- Config flow v2 with two-step setup (device selection → entity assignment).
-- Entry migration from v1 → v2.
+- Initial feature-complete release with VPD chase, night mode, drying mode, heater pulse plan, exhaust safety override, per-device manual overrides, and config flow v2.

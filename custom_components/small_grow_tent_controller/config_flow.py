@@ -44,7 +44,7 @@ def _bool_selector() -> selector.BooleanSelector:
 class SmallGrowTentConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Small Grow Tent Controller."""
 
-    VERSION = 2
+    VERSION = 3
 
     def __init__(self) -> None:
         self._device_enable: dict[str, bool] = {}

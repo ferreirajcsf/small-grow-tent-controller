@@ -24,11 +24,7 @@ from .coordinator import GrowTentCoordinator
 
 
 def device_info_for_entry(entry: ConfigEntry) -> dict:
-    """Return a DeviceInfo dict that groups all entities per tent/room.
-
-    Uses the config entry title so multiple instances can be named individually
-    (e.g. "Veg Tent", "Flower Tent").
-    """
+    """Return a DeviceInfo dict grouping all entities under one device per tent."""
     return {
         "identifiers": {(DOMAIN, entry.entry_id)},
         "name": entry.title or "Small Grow Tent Controller",
@@ -40,33 +36,40 @@ def device_info_for_entry(entry: ConfigEntry) -> dict:
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Migrate old config entries to the current schema version."""
+
     if entry.version == 1:
+        # v1 → v2: add device enable flags inferred from entity presence
         data = dict(entry.data)
 
         def _infer(use_key: str, entity_key: str) -> None:
             if use_key not in data:
                 data[use_key] = bool(data.get(entity_key))
 
-        _infer(CONF_USE_LIGHT, CONF_LIGHT_SWITCH)
-        _infer(CONF_USE_CIRCULATION, CONF_CIRC_SWITCH)
-        _infer(CONF_USE_EXHAUST, CONF_EXHAUST_SWITCH)
-        _infer(CONF_USE_HEATER, CONF_HEATER_SWITCH)
-        _infer(CONF_USE_HUMIDIFIER, CONF_HUMIDIFIER_SWITCH)
+        _infer(CONF_USE_LIGHT,        CONF_LIGHT_SWITCH)
+        _infer(CONF_USE_CIRCULATION,  CONF_CIRC_SWITCH)
+        _infer(CONF_USE_EXHAUST,      CONF_EXHAUST_SWITCH)
+        _infer(CONF_USE_HEATER,       CONF_HEATER_SWITCH)
+        _infer(CONF_USE_HUMIDIFIER,   CONF_HUMIDIFIER_SWITCH)
         _infer(CONF_USE_DEHUMIDIFIER, CONF_DEHUMIDIFIER_SWITCH)
 
         hass.config_entries.async_update_entry(entry, data=data, version=2)
-        return True
+        # Fall through to v2 → v3
 
     if entry.version == 2:
-        # Current version — nothing to migrate.
+        # v2 → v3: no data changes needed; new switch/number entities
+        # (vpd_chase_enabled, vpd_target_kpa) are created with safe defaults
+        # by their respective entity classes on first load.
+        hass.config_entries.async_update_entry(entry, version=3)
         return True
 
-    # Unknown future version — refuse to load to avoid silent data corruption.
+    if entry.version == 3:
+        return True
+
+    # Unknown future version — refuse to load
     return False
 
 
 async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> None:
-    """Handle options update."""
     await hass.config_entries.async_reload(entry.entry_id)
 
 
@@ -78,7 +81,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 
