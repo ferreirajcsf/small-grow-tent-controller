@@ -554,7 +554,7 @@ views:
                     entity: number.min_temperature
                     name: Min Temp
                     icon: mdi:thermometer-low
-                    display_mode: slider
+                    display_mode: buttons
                     fill_container: true
                     card_mod:
                       style: >
@@ -564,7 +564,7 @@ views:
                     entity: number.max_temperature
                     name: Max Temp
                     icon: mdi:thermometer-high
-                    display_mode: slider
+                    display_mode: buttons
                     fill_container: true
                     card_mod:
                       style: >
@@ -574,7 +574,7 @@ views:
                     entity: number.min_humidity
                     name: Min RH
                     icon: mdi:water-minus
-                    display_mode: slider
+                    display_mode: buttons
                     fill_container: true
                     card_mod:
                       style: >
@@ -584,7 +584,7 @@ views:
                     entity: number.max_humidity
                     name: Max RH
                     icon: mdi:water-plus
-                    display_mode: slider
+                    display_mode: buttons
                     fill_container: true
                     card_mod:
                       style: >
@@ -594,7 +594,7 @@ views:
                     entity: number.small_grow_tent_controller_vpd_target
                     name: VPD Target
                     icon: mdi:gauge
-                    display_mode: slider
+                    display_mode: buttons
                     fill_container: true
                     card_mod:
                       style: >
