@@ -237,13 +237,13 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     #  Sensor availability                                                 #
     # ------------------------------------------------------------------ #
 
-    async def _handle_sensor_availability(self, sensors_ok: bool) -> None:
+    def _handle_sensor_availability(self, sensors_ok: bool) -> None:
         notif_id = f"{DOMAIN}_{self.entry.entry_id}_{_NOTIF_SENSORS_UNAVAILABLE}"
 
         if not sensors_ok:
             if not self.control.sensors_were_unavailable:
                 self.control.sensors_were_unavailable = True
-                await persistent_notification.async_create(
+                persistent_notification.async_create(
                     self.hass,
                     message=(
                         f"**{self.entry.title}** — one or more environment sensors "
@@ -263,7 +263,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             if self.control.sensors_were_unavailable:
                 self.control.sensors_were_unavailable = False
-                await persistent_notification.async_dismiss(self.hass, notif_id)
+                persistent_notification.async_dismiss(self.hass, notif_id)
                 _LOGGER.info(
                     "%s: all sensors restored — controller resuming",
                     self.entry.title,
@@ -796,7 +796,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data.get("dew_point_c") is not None and
             data.get("vpd_kpa")     is not None
         )
-        await self._handle_sensor_availability(sensors_ok)
+        self._handle_sensor_availability(sensors_ok)
         if not sensors_ok:
             data["control_mode"] = "waiting_for_sensors"
             return data
