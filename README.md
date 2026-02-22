@@ -16,6 +16,8 @@ Running a grow tent means juggling a lot of variables — temperature, humidity,
 
 Every 10 seconds it reads your sensors, calculates VPD and dew point, and decides what to do with your connected devices. You just set your targets and let it run.
 
+![Dashboard Screenshot](images/Screenshot_GTC_v0.1.13.png)
+
 ---
 
 ## Features
