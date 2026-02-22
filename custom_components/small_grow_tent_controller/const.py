@@ -1,5 +1,5 @@
 DOMAIN = "small_grow_tent_controller"
-VERSION = "0.1.22"
+VERSION = "0.1.23"
 
 PLATFORMS = ["sensor", "switch", "select", "number", "time", "binary_sensor", "button"]
 
@@ -57,6 +57,28 @@ STAGE_TARGET_VPD_KPA = {
     "Early Bloom":       1.25,
     "Late Bloom":        1.45,
     "Drying":            0.90,
+}
+
+# Target temperature (°C) per stage — used as the slider reset value on stage change.
+# Represents the ideal canopy temperature the controller should chase during the day.
+STAGE_TARGET_TEMP_C = {
+    "Seedling":          24.0,
+    "Early Vegetative":  25.0,
+    "Late Vegetative":   26.0,
+    "Early Bloom":       26.0,
+    "Late Bloom":        25.0,
+    "Drying":            21.0,
+}
+
+# Target humidity (% RH) per stage — used as the slider reset value on stage change.
+# Represents the ideal RH the controller should chase during the day.
+STAGE_TARGET_RH = {
+    "Seedling":          70.0,
+    "Early Vegetative":  60.0,
+    "Late Vegetative":   55.0,
+    "Early Bloom":       50.0,
+    "Late Bloom":        45.0,
+    "Drying":            55.0,
 }
 
 DEFAULT_STAGE = "Early Vegetative"

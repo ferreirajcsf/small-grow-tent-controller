@@ -1,5 +1,39 @@
 # Changelog
 
+## [0.1.23] - 2026-02-22
+
+### New Features
+
+- **Target Temperature and Target Humidity sliders** — two new number entities added alongside the existing VPD Target:
+  - **Target Temperature** (°C) — the temperature the controller chases during VPD chase mode
+  - **Target Humidity** (% RH) — the humidity the controller nudges toward when VPD is in band
+  Both reset automatically to stage defaults when the stage changes, and can be adjusted freely at any time — identical behaviour to the VPD Target slider.
+
+  Default targets per stage:
+
+  | Stage | Target Temp | Target RH |
+  |---|---|---|
+  | Seedling | 24°C | 70% |
+  | Early Vegetative | 25°C | 60% |
+  | Late Vegetative | 26°C | 55% |
+  | Early Bloom | 26°C | 50% |
+  | Late Bloom | 25°C | 45% |
+  | Drying | 21°C | 55% |
+
+### Fixed
+
+- **VPD chase driving temperature to max limit** — the controller was using `max_temp` as its heating ceiling, causing it to push temperature to the top of the safety range regardless of VPD. The VPD chase logic has been rewritten to prioritise reaching **Target Temperature** first (using heater/exhaust), then use the humidifier/dehumidifier to address RH. When VPD is in band, the controller now fine-tunes RH toward Target Humidity within a 2% deadband.
+
+### ⚠️ Breaking Change
+
+After updating, two new entities will appear on your device card: **Target Temperature** and **Target Humidity**. These initialise to the stage defaults above. No existing entities are affected.
+
+### No Breaking Changes to existing entities
+
+Update via HACS and restart Home Assistant. No reconfiguration needed.
+
+---
+
 ## [0.1.22] - 2026-02-22
 
 ### Fixed

@@ -16,6 +16,8 @@ from .const import (
     DOMAIN,
     DEFAULT_STAGE,
     STAGE_TARGET_VPD_KPA,
+    STAGE_TARGET_TEMP_C,
+    STAGE_TARGET_RH,
     CONF_LIGHT_SWITCH,
     CONF_CIRC_SWITCH,
     CONF_EXHAUST_SWITCH,
@@ -535,34 +537,96 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _apply_vpd_chase(self, ctx: _Ctx) -> None:
         ctx.data["control_mode"] = "vpd_chase"
-        target_vpd = float(ctx.data.get("vpd_target_kpa", STAGE_TARGET_VPD_KPA.get(ctx.stage, 1.00)))
-        deadband   = float(ctx.data.get("vpd_deadband_kpa", 0.07))
+        target_vpd  = float(ctx.data.get("vpd_target_kpa",  STAGE_TARGET_VPD_KPA.get(ctx.stage, 1.00)))
+        target_temp = float(ctx.data.get("target_temp_c",   STAGE_TARGET_TEMP_C.get(ctx.stage, 25.0)))
+        target_rh   = float(ctx.data.get("target_rh",       STAGE_TARGET_RH.get(ctx.stage, 55.0)))
+        deadband    = float(ctx.data.get("vpd_deadband_kpa", 0.07))
+        temp_db     = 0.5   # °C deadband around target temp before acting
+        rh_db       = 2.0   # % RH deadband around target RH before acting
         low  = target_vpd - deadband
         high = target_vpd + deadband
 
+        ctx.data["debug_target_temp_c"] = target_temp
+        ctx.data["debug_target_rh"]     = target_rh
+
         if ctx.vpd < low:
-            await self._dehumidifier_on(ctx)
-            ctx.data["debug_dehumidifier_reason"] = "vpd_low -> on"
-            await self._humidifier_off(ctx)
-            ctx.data["debug_humidifier_reason"] = "vpd_low -> off"
-            if ctx.avg_temp < (ctx.max_temp - 0.2):
-                await self._heater_on_if_allowed(ctx, "vpd_low: temp has room -> heater_on")
-                await self._exhaust_off_if_on(ctx, "vpd_low: temp has room -> exhaust_off")
-            elif ctx.avg_rh > (ctx.min_rh + 1.0):
-                await self._exhaust_on_if_off(ctx, "vpd_low: temp near max -> exhaust_on")
+            # VPD too low — air is too humid and/or too cold.
+            # Priority: raise temperature toward target using heater.
+            # Secondary: use dehumidifier if temp is already at/above target.
+            if ctx.avg_temp < (target_temp - temp_db):
+                # Temp below target — heater is the right tool
+                await self._heater_on_if_allowed(ctx, "vpd_low: temp below target -> heater_on")
+                await self._exhaust_off_if_on(ctx, "vpd_low: temp below target -> exhaust_off")
+                await self._dehumidifier_off(ctx)
+                ctx.data["debug_dehumidifier_reason"] = "vpd_low: heating -> dehumidifier_off"
+                await self._humidifier_off(ctx)
+                ctx.data["debug_humidifier_reason"] = "vpd_low: heating -> humidifier_off"
+            elif ctx.avg_temp > (target_temp + temp_db):
+                # Temp above target — exhaust to cool, dehumidifier to lower RH
+                await self._heater_off(ctx, "vpd_low: temp above target -> heater_off")
+                await self._exhaust_on_if_off(ctx, "vpd_low: temp above target -> exhaust_on")
+                await self._dehumidifier_on(ctx)
+                ctx.data["debug_dehumidifier_reason"] = "vpd_low: temp high -> dehumidifier_on"
+                await self._humidifier_off(ctx)
+                ctx.data["debug_humidifier_reason"] = "vpd_low: temp high -> humidifier_off"
+            else:
+                # Temp at target — humidity is the issue, use dehumidifier
+                await self._heater_off(ctx, "vpd_low: temp ok -> heater_off")
+                await self._exhaust_off_if_on(ctx, "vpd_low: temp ok -> exhaust_off")
+                await self._dehumidifier_on(ctx)
+                ctx.data["debug_dehumidifier_reason"] = "vpd_low: temp ok -> dehumidifier_on"
+                await self._humidifier_off(ctx)
+                ctx.data["debug_humidifier_reason"] = "vpd_low: -> humidifier_off"
 
         elif ctx.vpd > high:
-            await self._dehumidifier_off(ctx)
-            await self._humidifier_on(ctx)
-            ctx.data["debug_humidifier_reason"] = "vpd_high -> on"
-            await self._heater_off(ctx, "vpd_high -> heater_off")
-            await self._exhaust_off_if_on(ctx, "vpd_high -> exhaust_off")
+            # VPD too high — air is too dry and/or too warm.
+            # Priority: reduce temperature toward target using exhaust.
+            # Secondary: use humidifier if temp is already at/below target.
+            if ctx.avg_temp > (target_temp + temp_db):
+                # Temp above target — exhaust to cool
+                await self._heater_off(ctx, "vpd_high: temp above target -> heater_off")
+                await self._exhaust_on_if_off(ctx, "vpd_high: temp above target -> exhaust_on")
+                await self._humidifier_off(ctx)
+                ctx.data["debug_humidifier_reason"] = "vpd_high: cooling -> humidifier_off"
+                await self._dehumidifier_off(ctx)
+                ctx.data["debug_dehumidifier_reason"] = "vpd_high: cooling -> dehumidifier_off"
+            elif ctx.avg_temp < (target_temp - temp_db):
+                # Temp below target — humidifier to raise RH (raises VPD)
+                await self._heater_off(ctx, "vpd_high: temp below target -> heater_off")
+                await self._exhaust_off_if_on(ctx, "vpd_high: temp below target -> exhaust_off")
+                await self._humidifier_on(ctx)
+                ctx.data["debug_humidifier_reason"] = "vpd_high: temp low -> humidifier_on"
+                await self._dehumidifier_off(ctx)
+                ctx.data["debug_dehumidifier_reason"] = "vpd_high: temp low -> dehumidifier_off"
+            else:
+                # Temp at target — humidity is the issue, use humidifier
+                await self._heater_off(ctx, "vpd_high: temp ok -> heater_off")
+                await self._exhaust_off_if_on(ctx, "vpd_high: temp ok -> exhaust_off")
+                await self._humidifier_on(ctx)
+                ctx.data["debug_humidifier_reason"] = "vpd_high: temp ok -> humidifier_on"
+                await self._dehumidifier_off(ctx)
+                ctx.data["debug_dehumidifier_reason"] = "vpd_high: -> dehumidifier_off"
 
         else:
-            await self._humidifier_off(ctx)
-            await self._dehumidifier_off(ctx)
+            # VPD in band — fine-tune temp and RH toward their targets
+            ctx.data["debug_humidifier_reason"]   = "vpd_inband"
+            ctx.data["debug_dehumidifier_reason"] = "vpd_inband"
             await self._heater_off(ctx, "vpd_inband -> heater_off")
             await self._exhaust_off_if_on(ctx, "vpd_inband -> exhaust_off")
+            # Nudge RH toward target within deadband
+            if ctx.avg_rh < (target_rh - rh_db):
+                await self._humidifier_on(ctx)
+                await self._dehumidifier_off(ctx)
+                ctx.data["debug_humidifier_reason"]   = "vpd_inband: rh below target -> humidifier_on"
+                ctx.data["debug_dehumidifier_reason"] = "vpd_inband: rh below target -> dehumidifier_off"
+            elif ctx.avg_rh > (target_rh + rh_db):
+                await self._dehumidifier_on(ctx)
+                await self._humidifier_off(ctx)
+                ctx.data["debug_humidifier_reason"]   = "vpd_inband: rh above target -> humidifier_off"
+                ctx.data["debug_dehumidifier_reason"] = "vpd_inband: rh above target -> dehumidifier_on"
+            else:
+                await self._humidifier_off(ctx)
+                await self._dehumidifier_off(ctx)
 
     # ------------------------------------------------------------------ #
     #  Hard limit evaluator                                                #
@@ -862,22 +926,24 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     #  VPD target stage-reset                                             #
     # ------------------------------------------------------------------ #
 
-    async def _reset_vpd_target_for_stage(self, stage: str) -> None:
-        """Find the VpdTargetNumber entity and reset it to the stage default."""
+    async def _reset_stage_targets(self, stage: str) -> None:
+        """Reset VPD target, temperature target, and RH target to stage defaults."""
         from homeassistant.helpers.entity_component import EntityComponent
-        target_uid = f"{self.entry.entry_id}_vpd_target_kpa"
         component: EntityComponent | None = self.hass.data.get("entity_components", {}).get("number")
         if component is None:
             return
+
+        targets = {
+            f"{self.entry.entry_id}_vpd_target_kpa": STAGE_TARGET_VPD_KPA.get(stage, 1.00),
+            f"{self.entry.entry_id}_target_temp_c":  STAGE_TARGET_TEMP_C.get(stage, 25.0),
+            f"{self.entry.entry_id}_target_rh":      STAGE_TARGET_RH.get(stage, 55.0),
+        }
+
         for entity in component.entities:
-            if getattr(entity, "unique_id", None) == target_uid:
+            uid = getattr(entity, "unique_id", None)
+            if uid in targets and hasattr(entity, "async_set_to_stage_default"):
                 await entity.async_set_to_stage_default(stage)
-                _LOGGER.debug(
-                    "VPD target reset to %.2f kPa for stage: %s",
-                    STAGE_TARGET_VPD_KPA.get(stage, 1.00),
-                    stage,
-                )
-                return
+                _LOGGER.debug("Stage target reset for %s → stage: %s", uid, stage)
 
     # ------------------------------------------------------------------ #
     #  Main data update                                                    #
@@ -932,6 +998,8 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "min_rh":             self._num(_eid("min_rh"),             40.0),
             "max_rh":             self._num(_eid("max_rh"),             70.0),
             "vpd_target_kpa":     self._num(_eid("vpd_target_kpa"),     1.00),
+            "target_temp_c":      self._num(_eid("target_temp_c"),      25.0),
+            "target_rh":          self._num(_eid("target_rh"),          55.0),
             "vpd_deadband_kpa":   self._num(_eid("vpd_deadband_kpa"),   0.07),
             "vpd_chase_enabled":  (self._get_entity_state(_eid("vpd_chase_enabled", "switch")) != "off"),
             "dewpoint_margin_c":  self._num(_eid("dewpoint_margin_c"),  1.0),
@@ -953,6 +1021,8 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "sensors_unavailable": self.control.sensors_were_unavailable,
             # Debug
             "debug_local_time":       debug_local_time,
+            "debug_target_temp_c":    None,
+            "debug_target_rh":        None,
             "debug_local_tod":        debug_local_tod,
             "debug_light_reason":     "n/a",
             "debug_exhaust_policy":   "n/a",
@@ -971,6 +1041,6 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         current_stage = data.get("stage", DEFAULT_STAGE)
         if current_stage != self.control.last_stage:
             self.control.last_stage = current_stage
-            await self._reset_vpd_target_for_stage(current_stage)
+            await self._reset_stage_targets(current_stage)
 
         return data

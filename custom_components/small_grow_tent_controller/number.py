@@ -14,6 +14,8 @@ from .const import (
     CONF_USE_HUMIDIFIER,
     CONF_USE_DEHUMIDIFIER,
     STAGE_TARGET_VPD_KPA,
+    STAGE_TARGET_TEMP_C,
+    STAGE_TARGET_RH,
     DEFAULT_STAGE,
 )
 
@@ -24,6 +26,8 @@ NUMBERS = [
     ("min_rh",                  "Min Humidity",                 10.0, 95.0,  0.5,  40.0,  "%"),
     ("max_rh",                  "Max Humidity",                 10.0, 95.0,  0.5,  70.0,  "%"),
     ("vpd_target_kpa",          "VPD Target",                   0.40, 2.50,  0.01, 1.00,  "kPa"),
+    ("target_temp_c",           "Target Temperature",           10.0, 35.0,  0.1,  25.0,  "°C"),
+    ("target_rh",               "Target Humidity",              10.0, 95.0,  0.5,  55.0,  "%"),
     ("vpd_deadband_kpa",        "VPD Deadband",                 0.02, 0.30,  0.01, 0.07,  "kPa"),
     ("dewpoint_margin_c",       "Dew Point Margin",             0.2,  5.0,   0.1,  1.0,   "°C"),
     ("heater_hold_s",           "Heater Hold Time",             10.0, 600.0, 5.0,  60.0,  "s"),
@@ -70,6 +74,10 @@ async def async_setup_entry(
     for cfg in selected:
         if cfg[0] == "vpd_target_kpa":
             entities.append(VpdTargetNumber(hass, entry, *cfg))
+        elif cfg[0] == "target_temp_c":
+            entities.append(TempTargetNumber(hass, entry, *cfg))
+        elif cfg[0] == "target_rh":
+            entities.append(RhTargetNumber(hass, entry, *cfg))
         else:
             entities.append(GrowNumber(hass, entry, *cfg))
 
@@ -128,6 +136,36 @@ class VpdTargetNumber(GrowNumber):
     async def async_set_to_stage_default(self, stage: str) -> None:
         """Called by the coordinator when stage changes — resets to the stage default."""
         default = STAGE_TARGET_VPD_KPA.get(stage, STAGE_TARGET_VPD_KPA[DEFAULT_STAGE])
+        self._value = default
+        await self.store.async_save({"value": self._value})
+        self.async_write_ha_state()
+
+
+class TempTargetNumber(GrowNumber):
+    """Target Temperature number that auto-resets to the stage default when the stage changes."""
+
+    def __init__(self, hass, entry, key, name, min_v, max_v, step, default, unit):
+        super().__init__(hass, entry, key, name, min_v, max_v, step, default, unit)
+        self._attr_icon = "mdi:thermometer"
+
+    async def async_set_to_stage_default(self, stage: str) -> None:
+        """Called by the coordinator when stage changes — resets to the stage default."""
+        default = STAGE_TARGET_TEMP_C.get(stage, STAGE_TARGET_TEMP_C[DEFAULT_STAGE])
+        self._value = default
+        await self.store.async_save({"value": self._value})
+        self.async_write_ha_state()
+
+
+class RhTargetNumber(GrowNumber):
+    """Target Humidity number that auto-resets to the stage default when the stage changes."""
+
+    def __init__(self, hass, entry, key, name, min_v, max_v, step, default, unit):
+        super().__init__(hass, entry, key, name, min_v, max_v, step, default, unit)
+        self._attr_icon = "mdi:water-percent"
+
+    async def async_set_to_stage_default(self, stage: str) -> None:
+        """Called by the coordinator when stage changes — resets to the stage default."""
+        default = STAGE_TARGET_RH.get(stage, STAGE_TARGET_RH[DEFAULT_STAGE])
         self._value = default
         await self.store.async_save({"value": self._value})
         self.async_write_ha_state()
