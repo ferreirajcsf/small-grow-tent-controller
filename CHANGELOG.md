@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.24] - 2026-02-22
+
+### New Features
+
+- **Target conflict detection** — the controller now computes the VPD that would result from your Target Temperature + Target Humidity settings (using the same leaf offset formula used for live VPD), and compares it to your VPD Target. Three new diagnostic sensors are exposed:
+  - **Target VPD (Implied)** — the VPD your temp + RH targets would actually produce
+  - **Target Conflict** — deviation as a percentage (positive = implied VPD too low, negative = too high)
+  - **Implied RH for Target VPD** — the RH you would need at Target Temp to actually hit your VPD Target
+
+- **Dashboard warning cards** — two conditional cards appear in the Limits & Targets section when the conflict exceeds ±15%. Each card tells the user which direction the conflict is, what VPD their current targets imply, and what RH they should set to resolve it. The cards disappear automatically once targets are consistent.
+
+### No Breaking Changes
+
+Update via HACS and restart Home Assistant. Three new sensor entities will appear on your device.
+
+---
+
 ## [0.1.23] - 2026-02-22
 
 ### New Features

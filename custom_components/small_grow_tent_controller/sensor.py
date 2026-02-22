@@ -21,6 +21,10 @@ SENSORS = [
     ("leaf_temp_offset_c", "Leaf Temp Offset", SensorDeviceClass.TEMPERATURE, "°C", False),
     # New in v0.1.15
     ("last_action",   "Last Action",         None,                          None,  False),
+    # New in v0.1.24 — target conflict detection
+    ("target_vpd_implied",  "Target VPD (Implied)",  None,  "kPa",  False),
+    ("target_conflict_pct", "Target Conflict",       None,  "%",    False),
+    ("target_implied_rh",   "Implied RH for Target VPD", None, "%", False),
 
     # Debug / diagnostics — hidden by default (enable via Settings → Entities)
     ("debug_local_time",    "Controller Local Time",      None,                          None,  True),

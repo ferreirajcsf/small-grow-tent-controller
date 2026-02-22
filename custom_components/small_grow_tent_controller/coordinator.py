@@ -11,7 +11,7 @@ from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator
 from homeassistant.util import dt as dt_util
 
-from .climate_math import safe_float, avg, dew_point_c, vpd_leaf_kpa
+from .climate_math import safe_float, avg, dew_point_c, vpd_leaf_kpa, sat_vapor_pressure_kpa
 from .const import (
     DOMAIN,
     DEFAULT_STAGE,
@@ -1034,6 +1034,26 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "debug_heater_max_run_s": 0.0,
             "debug_heater_lockout":   "inactive",
         }
+
+        # --- Target conflict detection ---
+        # Compute the VPD that would result from target_temp + target_rh
+        # using the same leaf offset the controller uses for live VPD.
+        # If this implied VPD deviates from target_vpd by more than a
+        # threshold, the targets are inconsistent and the user should be warned.
+        t_temp = float(data.get("target_temp_c", 25.0))
+        t_rh   = float(data.get("target_rh",     55.0))
+        t_vpd  = float(data.get("vpd_target_kpa", 1.00))
+        t_leaf = t_temp + float(data.get("leaf_temp_offset_c", -1.5))
+        implied_vpd = round(vpd_leaf_kpa(t_temp, t_rh, t_leaf), 3)
+        conflict_pct = round(((implied_vpd - t_vpd) / t_vpd) * 100.0, 1) if t_vpd > 0 else 0.0
+        # Implied RH needed at target_temp to actually hit target_vpd
+        # VPD_leaf = SVP(leaf) - RH/100 * SVP(air)  →  RH = (SVP(leaf) - target_vpd) / SVP(air) * 100
+        svp_air  = sat_vapor_pressure_kpa(t_temp)
+        svp_leaf = sat_vapor_pressure_kpa(t_leaf)
+        implied_rh = round(max(0.0, min(100.0, (svp_leaf - t_vpd) / svp_air * 100.0)), 1) if svp_air > 0 else t_rh
+        data["target_vpd_implied"]   = implied_vpd
+        data["target_conflict_pct"]  = conflict_pct
+        data["target_implied_rh"]    = implied_rh
 
         data = await self._apply_control(data)
 
