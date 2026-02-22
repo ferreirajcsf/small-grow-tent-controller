@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.20] - 2026-02-22
+
+### Fixed
+
+- **Device mode and stage selectors not restoring state correctly after restart** — `DeviceModeSelect` and `StageSelect` both use `RestoreEntity` to persist their last value across restarts. However, neither was calling `async_write_ha_state()` after restoring the value in `async_added_to_hass()`. This meant the entity's internal state was correctly restored, but the HA state machine was never updated with it. As a result, `_get_mode()` in the coordinator — which reads from the HA state machine — would see `unknown` instead of the restored value and silently fall back to `Auto`, causing device overrides and the selected stage to be ignored until the user manually changed them again after every restart.
+
+  This was the root cause of the circulation fan override not taking effect after a restart. The fix adds `async_write_ha_state()` to both `async_added_to_hass()` methods so the state machine is always in sync with the restored internal state from the first coordinator poll onwards.
+
+### No Breaking Changes
+
+Update via HACS and restart Home Assistant. No reconfiguration needed.
+
+---
+
 ## [0.1.19] - 2026-02-22
 
 ### Fixed

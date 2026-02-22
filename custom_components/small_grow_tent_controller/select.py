@@ -72,6 +72,7 @@ class StageSelect(SelectEntity, RestoreEntity):
         last = await self.async_get_last_state()
         if last and last.state in self._attr_options:
             self._current = last.state
+        self.async_write_ha_state()
 
     @property
     def current_option(self):
@@ -102,6 +103,7 @@ class DeviceModeSelect(SelectEntity, RestoreEntity):
         last = await self.async_get_last_state()
         if last and last.state in MODE_OPTIONS:
             self._current = last.state
+        self.async_write_ha_state()
 
     @property
     def current_option(self):
