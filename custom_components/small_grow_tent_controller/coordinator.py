@@ -710,19 +710,24 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data["debug_light_reason"] = "light_state_unknown"
 
         # --- Circulation ---
+        # circ_mode is read fresh every cycle. _get_mode() falls back to
+        # "Auto" if the select entity is unavailable, so we always get a
+        # safe value. In Auto the fan should be on whenever the controller
+        # is enabled — we enforce the desired state every cycle so that a
+        # manual override or unexpected state change is always corrected.
         circ_mode = self._get_mode("circulation_mode") if circ_eid else "Auto"
-        if circ_mode != "Auto" and circ_eid:
-            desired = circ_mode == "On"
-            data["debug_circulation_reason"] = f"override:{circ_mode.lower()}"
+        if circ_eid:
+            if circ_mode == "Off":
+                desired = False
+            elif circ_mode == "On":
+                desired = True
+            else:  # Auto
+                desired = enabled
+            data["debug_circulation_reason"] = f"{circ_mode.lower()}:{'on' if desired else 'off'}"
             cur = self._switch_is_on(circ_eid)
             if cur is not None and cur != desired:
                 await self._async_switch(circ_eid, desired)
-                self._record_action(f"Circulation {'ON' if desired else 'OFF'} · override:{circ_mode.lower()}")
-        elif enabled and circ_eid:
-            cur = self._switch_is_on(circ_eid)
-            if cur is not None and not cur:
-                await self._async_switch(circ_eid, True)
-                self._record_action("Circulation ON · controller enabled")
+                self._record_action(f"Circulation {'ON' if desired else 'OFF'} · {circ_mode.lower()}")
 
         # --- Controller disabled ---
         if not enabled:

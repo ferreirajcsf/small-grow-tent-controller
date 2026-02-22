@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.19] - 2026-02-22
+
+### Fixed
+
+- **Circulation fan Off override not working** — setting the circulation mode to `Off` was being silently ignored. The select entity can briefly report `unavailable` after a restart or entity reload, causing `_get_mode()` to fall back to `Auto` and discard the override for that cycle. The control block has been rewritten so the desired state is evaluated and enforced every single poll cycle rather than only when a transition is detected.
+
+- **Circulation fan not recovering on return to Auto** — switching the mode back to `Auto` after a manual `Off` did not turn the fan back on. The previous Auto logic only acted when the fan was off and needed turning on — it had no path to turn the fan on if it had been manually switched off outside the controller. The new logic unconditionally sets the fan to the correct desired state (`on` when enabled, `off` when disabled) every cycle, so it self-corrects within one poll interval (~10 seconds) regardless of how the fan got into the wrong state.
+
+### No Breaking Changes
+
+Update via HACS and restart Home Assistant. No reconfiguration needed.
+
+---
+
 ## [0.1.18] - 2026-02-21
 
 ### Fixed

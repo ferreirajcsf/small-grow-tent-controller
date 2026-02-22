@@ -1,5 +1,5 @@
 DOMAIN = "small_grow_tent_controller"
-VERSION = "0.1.18"
+VERSION = "0.1.19"
 
 PLATFORMS = ["sensor", "switch", "select", "number", "time", "binary_sensor", "button"]
 
