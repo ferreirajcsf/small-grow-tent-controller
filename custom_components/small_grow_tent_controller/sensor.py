@@ -21,6 +21,11 @@ SENSORS = [
     ("leaf_temp_offset_c", "Leaf Temp Offset", SensorDeviceClass.TEMPERATURE, "°C", False),
     # New in v0.1.15
     ("last_action",   "Last Action",         None,                          None,  False),
+    # New in v0.1.25 — VPD-drives-temperature
+    ("vpd_driven_temp_c",       "VPD Driven Temp Target",    SensorDeviceClass.TEMPERATURE, "°C",  False),
+    ("debug_vpd_driven_ideal",  "VPD Driven Ideal Temp",     SensorDeviceClass.TEMPERATURE, "°C",  True),
+    ("debug_vpd_driven_clamped","VPD Driven Temp Clamped",   None,                          None,  True),
+    ("debug_vpd_driven_limited","VPD Driven Ramp Limited",   None,                          None,  True),
     # New in v0.1.24 — target conflict detection
     ("target_vpd_implied",  "Target VPD (Implied)",  None,  "kPa",  False),
     ("target_conflict_pct", "Target Conflict",       None,  "%",    False),

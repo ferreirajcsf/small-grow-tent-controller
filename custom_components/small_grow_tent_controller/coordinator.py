@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, time
 from typing import Any
 
@@ -88,6 +88,12 @@ class ControlState:
 
     # Last action recorded by the controller
     last_action: str = "none"
+
+    # VPD-drives-temp: rolling ramp history
+    # Stores (timestamp, calculated_target_temp) tuples for ramp-rate limiting
+    vpd_driven_temp_history: list = field(default_factory=list)
+    # Last clamped target sent to the heater logic
+    vpd_driven_temp_target: float | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -244,6 +250,98 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ctx.avg_temp >= ctx.exhaust_safety_max_temp or
             ctx.avg_rh   >= ctx.exhaust_safety_max_rh
         )
+
+    # ------------------------------------------------------------------ #
+    #  VPD-drives-temperature helpers                                     #
+    # ------------------------------------------------------------------ #
+
+    def _solve_temp_for_vpd(
+        self,
+        target_vpd: float,
+        current_rh: float,
+        leaf_offset_c: float,
+        min_temp: float,
+        max_temp: float,
+    ) -> tuple[float, bool]:
+        """Solve for the air temperature that produces target_vpd at current_rh.
+
+        VPD_leaf = SVP(air + offset) - RH/100 * SVP(air)
+        No closed-form solution exists, so we bisect over a practical range.
+
+        Returns (clamped_target_temp, was_clamped).
+        """
+        rh = max(0.1, min(99.9, current_rh))
+        lo, hi = 5.0, 45.0  # search range °C
+
+        def vpd_at(t: float) -> float:
+            return vpd_leaf_kpa(t, rh, t + leaf_offset_c)
+
+        # VPD is monotonically increasing with temperature, so bisection is safe
+        if vpd_at(hi) < target_vpd:
+            # Even at max search temp we can't reach target — clamp
+            raw = hi
+        elif vpd_at(lo) > target_vpd:
+            # Even at min search temp VPD exceeds target — clamp
+            raw = lo
+        else:
+            for _ in range(30):  # 30 iterations → <0.01°C precision
+                mid = (lo + hi) / 2.0
+                if vpd_at(mid) < target_vpd:
+                    lo = mid
+                else:
+                    hi = mid
+            raw = round((lo + hi) / 2.0, 2)
+
+        clamped = max(min_temp, min(max_temp, raw))
+        return clamped, (clamped != raw)
+
+    def _apply_ramp_limit(
+        self,
+        now: datetime,
+        ideal_temp: float,
+        ramp_fast_c: float,
+        ramp_slow_c: float,
+    ) -> tuple[float, bool]:
+        """Clamp how fast the driven temperature target can change.
+
+        fast limit: max change over any 10-minute window
+        slow limit: max change over any 60-minute window
+
+        Returns (allowed_temp, was_limited).
+        """
+        # Prune history older than 70 minutes
+        cutoff_70m = now - timedelta(minutes=70)
+        self.control.vpd_driven_temp_history = [
+            (ts, t) for ts, t in self.control.vpd_driven_temp_history
+            if ts > cutoff_70m
+        ]
+
+        history = self.control.vpd_driven_temp_history
+        allowed = ideal_temp
+        limited = False
+
+        # Fast limit — look back 10 minutes
+        cutoff_10m = now - timedelta(minutes=10)
+        past_10m = [t for ts, t in history if ts >= cutoff_10m]
+        if past_10m:
+            base_fast = past_10m[0]  # oldest in window
+            if abs(ideal_temp - base_fast) > ramp_fast_c:
+                allowed = base_fast + (ramp_fast_c if ideal_temp > base_fast else -ramp_fast_c)
+                limited = True
+
+        # Slow limit — look back 60 minutes
+        cutoff_60m = now - timedelta(minutes=60)
+        past_60m = [t for ts, t in history if ts >= cutoff_60m]
+        if past_60m:
+            base_slow = past_60m[0]  # oldest in window
+            if abs(allowed - base_slow) > ramp_slow_c:
+                allowed = base_slow + (ramp_slow_c if allowed > base_slow else -ramp_slow_c)
+                limited = True
+
+        # Record this cycle's value
+        history.append((now, allowed))
+        self.control.vpd_driven_temp_target = allowed
+        return round(allowed, 2), limited
 
     # ------------------------------------------------------------------ #
     #  Sensor availability                                                 #
@@ -534,6 +632,64 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------ #
     #  VPD chase                                                           #
     # ------------------------------------------------------------------ #
+
+    async def _apply_vpd_drives_temp(self, ctx: _Ctx) -> None:
+        """VPD-drives-temperature mode.
+
+        VPD Target is master. Every cycle the controller:
+        1. Reads live RH (which we cannot control)
+        2. Solves for the air temperature that would produce target_vpd at that RH
+        3. Applies ramp-rate limits so the target cannot jump suddenly
+        4. Clamps to [min_temp, max_temp] hard limits
+        5. Chases that temperature using the heater (and exhaust for cooling)
+        """
+        ctx.data["control_mode"] = "vpd_drives_temp"
+
+        target_vpd   = float(ctx.data.get("vpd_target_kpa",  STAGE_TARGET_VPD_KPA.get(ctx.stage, 1.00)))
+        leaf_offset  = float(ctx.data.get("leaf_temp_offset_c", -1.5))
+        ramp_fast    = float(ctx.data.get("temp_ramp_fast_c", 0.5))
+        ramp_slow    = float(ctx.data.get("temp_ramp_slow_c", 2.0))
+        deadband     = 0.3   # °C — tighter than full VPD chase since we own the target
+
+        # Step 1+2: solve ideal temperature from live RH
+        ideal_temp, clamped = self._solve_temp_for_vpd(
+            target_vpd, ctx.avg_rh, leaf_offset, ctx.min_temp, ctx.max_temp
+        )
+
+        # Step 3: apply ramp limiting
+        driven_temp, limited = self._apply_ramp_limit(
+            ctx.now, ideal_temp, ramp_fast, ramp_slow
+        )
+
+        # Step 4: clamp again after ramp (ramp may have moved us, still stay in limits)
+        driven_temp = max(ctx.min_temp, min(ctx.max_temp, driven_temp))
+
+        ctx.data["vpd_driven_temp_c"]    = driven_temp
+        ctx.data["debug_heater_target_c"] = driven_temp
+        ctx.data["debug_vpd_driven_ideal"] = ideal_temp
+        ctx.data["debug_vpd_driven_clamped"] = clamped
+        ctx.data["debug_vpd_driven_limited"] = limited
+
+        error = driven_temp - ctx.avg_temp
+        ctx.data["debug_heater_error_c"] = round(error, 2)
+
+        # Step 5: chase driven_temp with heater/exhaust
+        if ctx.avg_temp < (driven_temp - deadband):
+            # Below target — heat up
+            await self._heater_on_if_allowed(ctx, f"vpd_drives_temp: {ctx.avg_temp:.1f}<{driven_temp:.1f} -> heater_on")
+            await self._exhaust_off_if_on(ctx, "vpd_drives_temp: heating -> exhaust_off")
+        elif ctx.avg_temp > (driven_temp + deadband):
+            # Above target — exhaust to cool (no heater)
+            await self._heater_off(ctx, f"vpd_drives_temp: {ctx.avg_temp:.1f}>{driven_temp:.1f} -> heater_off")
+            await self._exhaust_on_if_off(ctx, "vpd_drives_temp: cooling -> exhaust_on")
+        else:
+            # In band
+            await self._heater_off(ctx, "vpd_drives_temp: in_band -> heater_off")
+            await self._exhaust_off_if_on(ctx, "vpd_drives_temp: in_band -> exhaust_off")
+
+        # Humidifier/dehumidifier are not available in this mode — ensure off if present
+        await self._humidifier_off(ctx, "vpd_drives_temp: not used")
+        await self._dehumidifier_off(ctx, "vpd_drives_temp: not used")
 
     async def _apply_vpd_chase(self, ctx: _Ctx) -> None:
         ctx.data["control_mode"] = "vpd_chase"
@@ -916,7 +1072,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             hard_limit_active = await self._apply_day_hard_limits(ctx)
             if not hard_limit_active:
                 if data.get("vpd_chase_enabled", True):
-                    await self._apply_vpd_chase(ctx)
+                    if data.get("vpd_drives_temp_enabled", False):
+                        await self._apply_vpd_drives_temp(ctx)
+                    else:
+                        await self._apply_vpd_chase(ctx)
                 else:
                     ctx.data["control_mode"] = "limits_only"
 
@@ -1001,6 +1160,9 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "target_temp_c":      self._num(_eid("target_temp_c"),      25.0),
             "target_rh":          self._num(_eid("target_rh"),          55.0),
             "vpd_deadband_kpa":   self._num(_eid("vpd_deadband_kpa"),   0.07),
+            "temp_ramp_fast_c":   self._num(_eid("temp_ramp_fast_c"),   0.5),
+            "temp_ramp_slow_c":   self._num(_eid("temp_ramp_slow_c"),   2.0),
+            "vpd_drives_temp_enabled": (self._get_entity_state(_eid("vpd_drives_temp", "switch")) == "on"),
             "vpd_chase_enabled":  (self._get_entity_state(_eid("vpd_chase_enabled", "switch")) != "off"),
             "dewpoint_margin_c":  self._num(_eid("dewpoint_margin_c"),  1.0),
             "heater_hold_s":      self._num(_eid("heater_hold_s"),      60.0),
@@ -1033,6 +1195,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "debug_heater_on_for_s":  0,
             "debug_heater_max_run_s": 0.0,
             "debug_heater_lockout":   "inactive",
+            "vpd_driven_temp_c":         None,
+            "debug_vpd_driven_ideal":     None,
+            "debug_vpd_driven_clamped":   False,
+            "debug_vpd_driven_limited":   False,
         }
 
         # --- Target conflict detection ---

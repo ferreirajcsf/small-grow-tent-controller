@@ -7,7 +7,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.storage import Store
 
 from . import device_info_for_entry
-from .const import DOMAIN, CONF_USE_EXHAUST
+from .const import DOMAIN, CONF_USE_EXHAUST, CONF_USE_HUMIDIFIER, CONF_USE_DEHUMIDIFIER
 
 
 def _is_enabled(entry: ConfigEntry, key: str, default: bool = True) -> bool:
@@ -23,9 +23,12 @@ def _is_enabled(entry: ConfigEntry, key: str, default: bool = True) -> bool:
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ):
+    use_humidifier   = _is_enabled(entry, CONF_USE_HUMIDIFIER,   True)
+    use_dehumidifier = _is_enabled(entry, CONF_USE_DEHUMIDIFIER, True)
     entities: list[SwitchEntity] = [
         ControllerSwitch(hass, entry),
         VpdChaseSwitch(hass, entry),
+        VpdDrivesTempSwitch(hass, entry, auto_on=(not use_humidifier and not use_dehumidifier)),
     ]
     if _is_enabled(entry, CONF_USE_EXHAUST, True):
         entities.append(ExhaustSafetyOverrideSwitch(hass, entry))
@@ -116,3 +119,29 @@ class ExhaustSafetyOverrideSwitch(_StoredSwitch):
     def __init__(self, hass, entry):
         super().__init__(hass, entry, "exhaust_safety_override")
         self._attr_name = "Exhaust Safety Override"
+
+
+class VpdDrivesTempSwitch(_StoredSwitch):
+    """When ON, VPD Target is master — the controller calculates the ideal
+    temperature from live RH every cycle instead of chasing a fixed temp target.
+    Auto-enabled when no humidifier or dehumidifier is configured.
+    User can override either way via this switch.
+    """
+
+    _store_key  = "vpd_drives_temp"
+    _default_on = False
+
+    def __init__(self, hass, entry, auto_on: bool = False):
+        super().__init__(hass, entry, "vpd_drives_temp")
+        self._attr_name = "VPD Drives Temperature"
+        self._attr_icon = "mdi:thermometer-auto"
+        self._default_on = auto_on
+        self._is_on = auto_on  # set before async_added_to_hass restores
+
+    async def async_added_to_hass(self):
+        saved = await self.store.async_load()
+        if isinstance(saved, dict) and self._store_key in saved:
+            # Saved state always wins — user explicitly set it
+            self._is_on = bool(saved[self._store_key])
+        # else keep auto_on default
+        self.async_write_ha_state()

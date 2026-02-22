@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.1.25] - 2026-02-22
+
+### New Features
+
+- **VPD Drives Temperature mode** — a new control strategy for setups with no humidity control (heater only). When enabled, the VPD Target becomes the master value. Every 10 seconds the controller reads live RH (which it cannot control), solves for the air temperature that would produce the target VPD at that RH, and uses the heater and exhaust to chase that calculated temperature. The Target Temperature and Target Humidity sliders become fallback/reference values only in this mode.
+
+  **Auto-detection:** the mode activates automatically when no humidifier and no dehumidifier are configured. Users with humidity control get the original chase behaviour by default. Either way, the new **VPD Drives Temperature** switch lets you override in either direction.
+
+- **Temperature ramp limiting** — two new sliders prevent the calculated target from jumping suddenly when RH changes quickly:
+  - **Ramp Fast Limit** (°C per 10-min window, default 0.5°C) — prevents sudden spikes
+  - **Ramp Slow Limit** (°C per hour, default 2.0°C) — prevents sustained creep
+  Both appear in the Tuning section only when VPD Drives Temperature is enabled.
+
+- **New sensor: VPD Driven Temp Target** — shows the temperature the controller is currently chasing based on live RH and target VPD. Visible in the Calculations section when the mode is active.
+
+### Technical details
+
+- Target temperature is solved by bisection (30 iterations, <0.01°C precision) over the same `VPD_leaf = SVP(leaf) - RH/100 × SVP(air)` formula used everywhere else in the integration.
+- Calculated target is always clamped to [min_temp, max_temp] hard limits silently — no action required.
+- Ramp history is kept in memory and resets on HA restart (intentional — avoids stale ramp anchors after a long downtime).
+
+### No Breaking Changes
+
+Update via HACS and restart. One new switch entity and two new sensor entities will appear. If you have no humidifier or dehumidifier configured, the VPD Drives Temperature switch will turn itself on automatically on first install.
+
+---
+
 ## [0.1.24] - 2026-02-22
 
 ### New Features

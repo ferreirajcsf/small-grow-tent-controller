@@ -29,6 +29,8 @@ NUMBERS = [
     ("target_temp_c",           "Target Temperature",           10.0, 35.0,  0.1,  25.0,  "°C"),
     ("target_rh",               "Target Humidity",              10.0, 95.0,  0.5,  55.0,  "%"),
     ("vpd_deadband_kpa",        "VPD Deadband",                 0.02, 0.30,  0.01, 0.07,  "kPa"),
+    ("temp_ramp_fast_c",        "Temp Ramp Fast Limit",         0.1,  3.0,   0.1,  0.5,   "°C/10min"),
+    ("temp_ramp_slow_c",        "Temp Ramp Slow Limit",         0.5,  10.0,  0.5,  2.0,   "°C/h"),
     ("dewpoint_margin_c",       "Dew Point Margin",             0.2,  5.0,   0.1,  1.0,   "°C"),
     ("heater_hold_s",           "Heater Hold Time",             10.0, 600.0, 5.0,  60.0,  "s"),
     ("heater_max_run_s",        "Heater Max Run Time",          0.0,  600.0, 5.0,  0.0,   "s"),

@@ -116,7 +116,8 @@ views:
                         'drying_hard_limit:temp_below_min': 'Drying: Temp too low',
                         'drying_hard_limit:temp_above_max': 'Drying: Temp too high',
                         'drying_hard_limit:rh_below_min': 'Drying: RH too low',
-                        'drying_hard_limit:rh_above_max': 'Drying: RH too high'
+                        'drying_hard_limit:rh_above_max': 'Drying: RH too high',
+        'vpd_drives_temp': 'VPD drives temperature'
                       } %} {{ map.get(m, m | replace('_',' ') ) }} • {{ badge }}
                     icon: >
                       {% set m = states('sensor.control_mode') %} {% if m ==
@@ -170,13 +171,27 @@ views:
                     tap_action:
                       action: more-info
                     fill_container: true
-              - type: custom:mushroom-entity-card
-                entity: switch.small_grow_tent_controller_vpd_chase
-                name: VPD Chase
-                icon: mdi:chart-bubble
-                tap_action:
-                  action: toggle
-                fill_container: true
+              - type: custom:layout-card
+                layout_type: grid
+                layout:
+                  grid-template-columns: repeat(2, 1fr)
+                  grid-auto-rows: 80px
+                  grid-column-gap: 12px
+                cards:
+                  - type: custom:mushroom-entity-card
+                    entity: switch.small_grow_tent_controller_vpd_chase
+                    name: VPD Chase
+                    icon: mdi:chart-bubble
+                    tap_action:
+                      action: toggle
+                    fill_container: true
+                  - type: custom:mushroom-entity-card
+                    entity: switch.small_grow_tent_controller_vpd_drives_temperature
+                    name: VPD Drives Temp
+                    icon: mdi:thermometer-auto
+                    tap_action:
+                      action: toggle
+                    fill_container: true
           - type: vertical-stack
             view_layout:
               grid-area: calc
@@ -213,6 +228,16 @@ views:
                     name: Dew Point
                     icon: mdi:weather-fog
                     fill_container: true
+                  - type: conditional
+                    conditions:
+                      - entity: switch.small_grow_tent_controller_vpd_drives_temperature
+                        state: "on"
+                    card:
+                      type: custom:mushroom-entity-card
+                      entity: sensor.small_grow_tent_controller_vpd_driven_temp_target
+                      name: Driven Temp Target
+                      icon: mdi:thermometer-auto
+                      fill_container: true
           - type: vertical-stack
             view_layout:
               grid-area: env
@@ -285,6 +310,36 @@ views:
                       style: >
                         ha-card { padding-top: 8px !important; padding-bottom:
                         8px !important; }
+                  - type: conditional
+                    conditions:
+                      - entity: switch.small_grow_tent_controller_vpd_drives_temperature
+                        state: "on"
+                    card:
+                      type: custom:mushroom-number-card
+                      entity: number.small_grow_tent_controller_temp_ramp_fast_limit
+                      name: Ramp Fast (°C/10min)
+                      icon: mdi:speedometer
+                      display_mode: buttons
+                      fill_container: true
+                      card_mod:
+                        style: >
+                          ha-card { padding-top: 8px !important; padding-bottom:
+                          8px !important; }
+                  - type: conditional
+                    conditions:
+                      - entity: switch.small_grow_tent_controller_vpd_drives_temperature
+                        state: "on"
+                    card:
+                      type: custom:mushroom-number-card
+                      entity: number.small_grow_tent_controller_temp_ramp_slow_limit
+                      name: Ramp Slow (°C/h)
+                      icon: mdi:speedometer-slow
+                      display_mode: buttons
+                      fill_container: true
+                      card_mod:
+                        style: >
+                          ha-card { padding-top: 8px !important; padding-bottom:
+                          8px !important; }
                   - type: custom:mushroom-number-card
                     entity: number.dew_point_margin
                     name: Dew Margin
