@@ -643,6 +643,18 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._record_action(f"Dehumidifier OFF · {reason}")
             ctx.dehumidifier_on = False
 
+    async def _circ_on(self, ctx: _Ctx, reason: str = "auto") -> None:
+        if not ctx.circ_on and ctx.circ_eid:
+            await self._async_switch(ctx.circ_eid, True)
+            self._record_action(f"Circulation ON · {reason}")
+            ctx.circ_on = True
+
+    async def _circ_off(self, ctx: _Ctx, reason: str = "auto") -> None:
+        if ctx.circ_on and ctx.circ_eid:
+            await self._async_switch(ctx.circ_eid, False)
+            self._record_action(f"Circulation OFF · {reason}")
+            ctx.circ_on = False
+
     # ------------------------------------------------------------------ #
     #  Top-level control dispatcher                                        #
     # ------------------------------------------------------------------ #
@@ -804,16 +816,15 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ctx = await self._apply_forced_modes(ctx)
 
         # --- Circulation Auto ---
-        # If circ_eid is still set (i.e. mode is Auto), enforce fan on when
-        # the controller is enabled, off when disabled — every cycle so any
-        # unexpected state change is self-corrected within ~10 seconds.
+        # If circ_eid is still set (i.e. mode is Auto), use atomic helpers to
+        # enforce the correct state every cycle — same pattern as all other devices.
         if ctx.circ_eid:
-            desired = enabled
-            cur = self._switch_is_on(ctx.circ_eid)
-            ctx.data["debug_circulation_reason"] = f"auto:{'on' if desired else 'off'}"
-            if cur is not None and cur != desired:
-                await self._async_switch(ctx.circ_eid, desired)
-                self._record_action(f"Circulation {'ON' if desired else 'OFF'} · auto")
+            if enabled:
+                ctx.data["debug_circulation_reason"] = "auto:on"
+                await self._circ_on(ctx, "auto: controller enabled")
+            else:
+                ctx.data["debug_circulation_reason"] = "auto:off"
+                await self._circ_off(ctx, "auto: controller disabled")
 
         # Check sensors before proceeding
         sensors_ok = (

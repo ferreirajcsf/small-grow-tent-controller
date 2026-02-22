@@ -1,10 +1,10 @@
 # Changelog
 
-## [0.1.21] - 2026-02-22
+## [0.1.22] - 2026-02-22
 
 ### Fixed
 
-- **Circulation fan override pipeline** — the circulation fan was handled by a separate code path outside the standard device override pipeline, which is why On/Off overrides and Auto recovery were unreliable. Circulation is now fully integrated into `_apply_forced_modes` alongside the heater, humidifier, and dehumidifier. On/Off overrides null out `ctx.circ_eid` exactly like other devices, and the Auto case enforces the correct state every poll cycle after forced modes have run. Self-corrects within ~10 seconds.
+- **Circulation fan control fully rebuilt** — circulation is now wired up identically to all other devices end to end. On/Off overrides are handled in `_apply_forced_modes` which nulls out `ctx.circ_eid` to prevent any further action downstream. The Auto case uses new `_circ_on` / `_circ_off` atomic helpers (same pattern as `_humidifier_on`, `_dehumidifier_off`, etc.) that read and update `ctx.circ_on` directly — no more raw `_switch_is_on` reads that could disagree with the context state. The fan will turn on within one poll cycle (~10 seconds) when switched back to Auto, regardless of how it was turned off.
 
 ### Changed
 
