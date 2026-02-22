@@ -115,10 +115,12 @@ class _Ctx:
     heater_eid:         str | None
     humidifier_eid:     str | None
     dehumidifier_eid:   str | None
+    circ_eid:           str | None
     heater_on:          bool
     exhaust_on:         bool
     humidifier_on:      bool
     dehumidifier_on:    bool
+    circ_on:            bool
     exhaust_safety_on:  bool
     exhaust_safety_max_temp: float
     exhaust_safety_max_rh:   float
@@ -299,6 +301,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ("heater_eid",       "heater_mode",       "Heater",       "heater_hold",       "heater_on"),
             ("humidifier_eid",   "humidifier_mode",   "Humidifier",   "humidifier_hold",   "humidifier_on"),
             ("dehumidifier_eid", "dehumidifier_mode", "Dehumidifier", "dehumidifier_hold", "dehumidifier_on"),
+            ("circ_eid",         "circulation_mode",  "Circulation",  None,                "circ_on"),
         ]:
             eid  = getattr(ctx, eid_attr)
             mode = self._get_mode(mode_key) if eid else "Auto"
@@ -308,7 +311,8 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             cur = self._switch_is_on(eid)
             if cur is not None and cur != desired:
                 await self._async_switch(eid, desired)
-                setattr(self.control, f"last_{label.lower()}_change", now)
+                if hold_attr:
+                    setattr(self.control, f"last_{label.lower()}_change", now)
                 self._record_action(f"{label} {'ON' if desired else 'OFF'} · override:{mode.lower()}")
             setattr(ctx, on_attr, desired)
             setattr(ctx, eid_attr, None)
@@ -710,24 +714,8 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             data["debug_light_reason"] = "light_state_unknown"
 
         # --- Circulation ---
-        # circ_mode is read fresh every cycle. _get_mode() falls back to
-        # "Auto" if the select entity is unavailable, so we always get a
-        # safe value. In Auto the fan should be on whenever the controller
-        # is enabled — we enforce the desired state every cycle so that a
-        # manual override or unexpected state change is always corrected.
-        circ_mode = self._get_mode("circulation_mode") if circ_eid else "Auto"
-        if circ_eid:
-            if circ_mode == "Off":
-                desired = False
-            elif circ_mode == "On":
-                desired = True
-            else:  # Auto
-                desired = enabled
-            data["debug_circulation_reason"] = f"{circ_mode.lower()}:{'on' if desired else 'off'}"
-            cur = self._switch_is_on(circ_eid)
-            if cur is not None and cur != desired:
-                await self._async_switch(circ_eid, desired)
-                self._record_action(f"Circulation {'ON' if desired else 'OFF'} · {circ_mode.lower()}")
+        # Handled fully in _apply_forced_modes (On/Off overrides) and the
+        # Auto block that follows ctx construction below.
 
         # --- Controller disabled ---
         if not enabled:
@@ -799,18 +787,33 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             heater_eid         = heater_eid,
             humidifier_eid     = humidifier_eid,
             dehumidifier_eid   = dehumidifier_eid,
+            circ_eid           = circ_eid,
             heater_on          = heater_on_actual,
             exhaust_on         = exhaust_on,
             humidifier_on      = humidifier_on,
             dehumidifier_on    = dehumidifier_on,
+            circ_on            = self._switch_is_on(circ_eid) is True,
             exhaust_safety_on  = bool(data.get("exhaust_safety_override")),
             exhaust_safety_max_temp = float(data.get("exhaust_safety_max_temp_c", 30.0)),
             exhaust_safety_max_rh   = float(data.get("exhaust_safety_max_rh",     75.0)),
             heater_max_run_s   = float(data.get("heater_max_run_s", 0.0) or 0.0),
         )
 
-        # Apply forced On/Off overrides
+        # Apply forced On/Off overrides (handles On/Off modes for all devices
+        # including circulation; sets ctx.circ_eid = None when override active)
         ctx = await self._apply_forced_modes(ctx)
+
+        # --- Circulation Auto ---
+        # If circ_eid is still set (i.e. mode is Auto), enforce fan on when
+        # the controller is enabled, off when disabled — every cycle so any
+        # unexpected state change is self-corrected within ~10 seconds.
+        if ctx.circ_eid:
+            desired = enabled
+            cur = self._switch_is_on(ctx.circ_eid)
+            ctx.data["debug_circulation_reason"] = f"auto:{'on' if desired else 'off'}"
+            if cur is not None and cur != desired:
+                await self._async_switch(ctx.circ_eid, desired)
+                self._record_action(f"Circulation {'ON' if desired else 'OFF'} · auto")
 
         # Check sensors before proceeding
         sensors_ok = (

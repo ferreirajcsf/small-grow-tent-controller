@@ -1,8 +1,26 @@
 # Changelog
 
+## [0.1.21] - 2026-02-22
+
+### Fixed
+
+- **Circulation fan override pipeline** — the circulation fan was handled by a separate code path outside the standard device override pipeline, which is why On/Off overrides and Auto recovery were unreliable. Circulation is now fully integrated into `_apply_forced_modes` alongside the heater, humidifier, and dehumidifier. On/Off overrides null out `ctx.circ_eid` exactly like other devices, and the Auto case enforces the correct state every poll cycle after forced modes have run. Self-corrects within ~10 seconds.
+
+### Changed
+
+- **README** — dashboard screenshot moved to the Example Dashboard section where it is more relevant.
+
+### No Breaking Changes
+
+Update via HACS and restart Home Assistant. No reconfiguration needed.
+
+---
+
 ## [0.1.20] - 2026-02-22
 
 ### Fixed
+
+- **Circulation fan override and Auto not working reliably** — the circulation fan was handled by a separate inline block outside the standard device override pipeline (`_apply_forced_modes`). This meant On/Off overrides were not enforced with the same reliability as other devices, and switching back to Auto after a manual off did not reliably restore the fan. Circulation is now fully integrated into `_apply_forced_modes` alongside the heater, humidifier, and dehumidifier — On/Off overrides null out `ctx.circ_eid` exactly like other devices, and the Auto case enforces the correct state every poll cycle after forced modes have run.
 
 - **Device mode and stage selectors not restoring state correctly after restart** — `DeviceModeSelect` and `StageSelect` both use `RestoreEntity` to persist their last value across restarts. However, neither was calling `async_write_ha_state()` after restoring the value in `async_added_to_hass()`. This meant the entity's internal state was correctly restored, but the HA state machine was never updated with it. As a result, `_get_mode()` in the coordinator — which reads from the HA state machine — would see `unknown` instead of the restored value and silently fall back to `Auto`, causing device overrides and the selected stage to be ignored until the user manually changed them again after every restart.
 
