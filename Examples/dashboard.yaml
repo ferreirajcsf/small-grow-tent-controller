@@ -117,7 +117,7 @@ views:
                         'drying_hard_limit:temp_above_max': 'Drying: Temp too high',
                         'drying_hard_limit:rh_below_min': 'Drying: RH too low',
                         'drying_hard_limit:rh_above_max': 'Drying: RH too high',
-        'vpd_drives_temp': 'VPD drives temperature'
+                        'vpd_drives_temp': 'VPD drives temperature'
                       } %} {{ map.get(m, m | replace('_',' ') ) }} • {{ badge }}
                     icon: >
                       {% set m = states('sensor.control_mode') %} {% if m ==
