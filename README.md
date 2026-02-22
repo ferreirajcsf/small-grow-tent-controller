@@ -16,8 +16,6 @@ Running a grow tent means juggling a lot of variables — temperature, humidity,
 
 Every 10 seconds it reads your sensors, calculates VPD and dew point, and decides what to do with your connected devices. You just set your targets and let it run.
 
-![Dashboard Screenshot](images/Screenshot_GTC.png)
-
 ---
 
 ## Features
@@ -35,7 +33,7 @@ All devices are optional — only enable what you actually have:
 | Device | What it controls |
 |---|---|
 | 🔆 Light | On/off by schedule |
-| 💨 Circulation fan | Always on when controller is active |
+| 💨 Circulation fan | On whenever the controller is active (Auto), or manually forced On/Off |
 | 🌬️ Exhaust fan | Temperature, humidity, and VPD management |
 | 🔥 Heater | Temperature and night-time dew-point protection |
 | 💧 Humidifier | VPD and humidity management |
@@ -48,10 +46,10 @@ Switch between stages and the controller automatically adjusts its VPD targets:
 | Stage | Default VPD | Adjustable? |
 |---|---|---|
 | Seedling | 0.70 kPa | ✅ Yes |
-| Vegetative | 1.00 kPa | ✅ Yes |
-| Early Flower | 1.10 kPa | ✅ Yes |
-| Mid Flower | 1.30 kPa | ✅ Yes |
-| Late Flower | 1.50 kPa | ✅ Yes |
+| Early Vegetative | 0.95 kPa | ✅ Yes |
+| Late Vegetative | 1.10 kPa | ✅ Yes |
+| Early Bloom | 1.25 kPa | ✅ Yes |
+| Late Bloom | 1.45 kPa | ✅ Yes |
 | Drying | 0.90 kPa | ✅ Yes |
 
 The **VPD Target** slider lets you nudge the target for the current stage at any time. When you switch stage, it resets to that stage's default automatically (~10 second delay).
@@ -64,7 +62,7 @@ The **VPD Target** slider lets you nudge the target for the current stage at any
 
 **Per-device manual overrides**
 
-Each device has an Auto / On / Off mode selector. Set any device to On or Off to override the controller for that device, or use the "Return All Devices to Auto" button to hand everything back to the controller in one tap.
+Each device has an Auto / On / Off mode selector. Set any device to On or Off to override the controller for that device, or use the "Return All Devices to Auto" button to hand everything back to the controller in one tap. Overrides are enforced every poll cycle, so the controller will correct any unexpected state change within ~10 seconds.
 
 **Entities created automatically**
 
@@ -151,7 +149,7 @@ Once the integration is running, tune it from the entity controls in your dashbo
 The controller runs every 10 seconds and works through a priority stack — higher priorities always win.
 
 ### 1. Manual overrides
-If any device is set to On or Off (not Auto), that device is locked to that state regardless of everything else. The rest of the controller still runs normally for the other devices.
+If any device is set to On or Off (not Auto), that device is locked to that state regardless of everything else. The desired state is enforced every cycle, so the controller will correct any external change within ~10 seconds. The rest of the controller still runs normally for Auto devices.
 
 ### 2. Disabled state
 If the controller switch is off, automatic control stops. Manual overrides (On/Off modes) still work, but Auto devices are left alone.
@@ -163,17 +161,33 @@ When the stage is set to **Drying**, lights are always off and the controller en
 If the heater has been running continuously longer than **Heater Max Run Time**, it is immediately forced off and locked out for the heater hold period before it can turn on again.
 
 ### 5. Night mode (lights off window)
-During the lights-off period the controller switches to **dew-point protection** mode. The heater runs in soft pulses to keep the air temperature above `dew point + margin`, preventing condensation on your plants. The exhaust fan behaviour at night depends on the stage profile:
-- **Seedling** — exhaust runs automatically only if temp or RH exceeds limits
-- **All other stages** — exhaust stays on continuously through the night
+During the lights-off period the controller switches to **dew-point protection** mode. The heater runs in soft pulses to keep the air temperature above `dew point + margin`, preventing condensation on your plants. The exhaust fan behaviour at night depends on the stage:
+
+| Stage | Night exhaust behaviour |
+|---|---|
+| Seedling | Auto — runs only if temp or RH exceeds limits |
+| Early Vegetative | On continuously |
+| Late Vegetative | On continuously |
+| Early Bloom | On continuously |
+| Late Bloom | On continuously |
+| Drying | On continuously |
 
 ### 6. Day mode — hard limits
-During the lights-on period, if temperature or humidity breach their min/max limits, the controller acts immediately (e.g. too hot → heater off + exhaust on, too humid → exhaust on + dehumidifier on).
+During the lights-on period, if temperature or humidity breach their min/max limits, the controller acts immediately:
+
+| Condition | Response |
+|---|---|
+| Temp above max | Heater off + exhaust on |
+| Temp below min | Heater on + exhaust off |
+| RH above max | Exhaust on + dehumidifier on + humidifier off |
+| RH below min | Exhaust off + humidifier on + dehumidifier off |
 
 ### 7. Day mode — VPD chase
-When everything is within limits and the **VPD Chase** switch is ON, the controller fine-tunes conditions by chasing the stage's VPD target (set by the **VPD Target** slider) within the configured deadband, using the heater, exhaust, humidifier, and dehumidifier as needed.
+When everything is within limits and the **VPD Chase** switch is ON, the controller fine-tunes conditions by chasing the stage's VPD target within the configured deadband, using the heater, exhaust, humidifier, and dehumidifier as needed.
 
 When VPD Chase is OFF, the controller operates in **limits-only mode**: devices are left neutral as long as temp and RH stay within their min/max limits. Useful for simpler thermostat/humidistat style control.
+
+> **Note:** If you have no humidifier or dehumidifier, the controller will still use the heater and exhaust to influence VPD where possible. In cases where only humidity adjustment would help (e.g. VPD too high with no humidifier), the controller goes neutral and relies on the tent's natural humidity recovering on its own — no errors, no unexpected behaviour.
 
 ---
 
@@ -205,6 +219,9 @@ One or more of your sensor entities is unavailable or returning a non-numeric va
 
 **Devices are not switching**
 Make sure the entity IDs you assigned in the config are `switch.*` entities and that Home Assistant can control them (test with a manual toggle from the HA UI first).
+
+**A device override (On/Off) doesn't seem to be taking effect**
+The controller enforces the desired state every ~10 seconds. If a device isn't responding, check that the switch entity is reachable and not reporting `unavailable` in HA.
 
 **Something seems wrong with the logic**
 Enable the `debug_*` sensors via **Settings → Entities** — they show exactly what the controller is doing and why on every cycle.
