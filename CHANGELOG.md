@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.26] - 2026-02-24
+
+### Bug Fixes
+
+- **Exhaust fan forced on at night** — All grow stages (Early Vegetative, Late Vegetative,
+  Early Bloom, Late Bloom) were incorrectly forcing the exhaust fan on throughout the entire
+  night period. These stages now use `auto` mode, meaning the exhaust only runs at night when
+  needed for dew-point protection. Drying stage retains forced-on behaviour as intended.
+
+---
+
 ## [0.1.25] - 2026-02-22
 
 ### New Features

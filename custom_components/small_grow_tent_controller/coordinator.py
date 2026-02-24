@@ -47,10 +47,10 @@ _NOTIF_SENSORS_UNAVAILABLE = "sensors_unavailable"
 # Stage-specific night behaviour: exhaust_mode = "on" | "auto"
 STAGE_NIGHT_PROFILE: dict[str, dict[str, Any]] = {
     "Seedling":          {"exhaust_mode": "auto", "dew_margin_add_c": 0.0},
-    "Early Vegetative":  {"exhaust_mode": "on",   "dew_margin_add_c": 0.0},
-    "Late Vegetative":   {"exhaust_mode": "on",   "dew_margin_add_c": 0.0},
-    "Early Bloom":       {"exhaust_mode": "on",   "dew_margin_add_c": 0.0},
-    "Late Bloom":        {"exhaust_mode": "on",   "dew_margin_add_c": 0.0},
+    "Early Vegetative":  {"exhaust_mode": "auto", "dew_margin_add_c": 0.0},
+    "Late Vegetative":   {"exhaust_mode": "auto", "dew_margin_add_c": 0.0},
+    "Early Bloom":       {"exhaust_mode": "auto", "dew_margin_add_c": 0.0},
+    "Late Bloom":        {"exhaust_mode": "auto", "dew_margin_add_c": 0.0},
     "Drying":            {"exhaust_mode": "on",   "dew_margin_add_c": 1.0},
 }
 
