@@ -6,7 +6,7 @@
 
 A Home Assistant custom integration that automatically monitors and controls the environment inside a small grow tent — keeping temperature, humidity, and VPD where your plants need them, around the clock.
 
-> **Status:** Early development (pre-1.0). Expect occasional breaking changes until a stable release is tagged.
+> **Status:** Active development (pre-1.0). Core control logic is stable. Expect occasional breaking changes until v1.0 is tagged.
 
 ---
 
@@ -22,6 +22,7 @@ Every 10 seconds it reads your sensors, calculates VPD and dew point, and decide
 
 **Smart environmental control**
 - Continuously chases your target VPD for each growth stage
+- **VPD-driven temperature mode** — when no humidifier/dehumidifier is present, the controller solves the ideal temperature for your current humidity to hit the VPD target, with configurable ramp rate limits to prevent sudden jumps
 - Calculates leaf-surface VPD (with configurable leaf temperature offset) for more accurate control
 - Automatic dew point calculation and dew-point protection at night
 - Hard safety limits for temperature and humidity that kick in before things go wrong
@@ -165,11 +166,11 @@ During the lights-off period the controller switches to **dew-point protection**
 
 | Stage | Night exhaust behaviour |
 |---|---|
-| Seedling | Auto — runs only if temp or RH exceeds limits |
-| Early Vegetative | On continuously |
-| Late Vegetative | On continuously |
-| Early Bloom | On continuously |
-| Late Bloom | On continuously |
+| Seedling | Auto — runs only if needed for dew-point protection |
+| Early Vegetative | Auto — runs only if needed for dew-point protection |
+| Late Vegetative | Auto — runs only if needed for dew-point protection |
+| Early Bloom | Auto — runs only if needed for dew-point protection |
+| Late Bloom | Auto — runs only if needed for dew-point protection |
 | Drying | On continuously |
 
 ### 6. Day mode — hard limits
@@ -193,15 +194,13 @@ When VPD Chase is OFF, the controller operates in **limits-only mode**: devices 
 
 ## Example Dashboard
 
-![Dashboard Screenshot](images/Screenshot_GTC_v0.1.13.png)
-
-An example Lovelace dashboard is included in the `Examples/` folder.
+An example Lovelace dashboard is included in the `Examples/` folder. It is structured across four views — Status, Targets, Devices, and Debug — so the most-used information is always front and centre.
 
 **Required custom cards** (install via HACS):
 - [layout-card](https://github.com/thomasloven/lovelace-layout-card)
 - [Mushroom cards](https://github.com/piitaya/lovelace-mushroom)
-- [button-card](https://github.com/custom-cards/button-card)
 - [card-mod](https://github.com/thomasloven/lovelace-card-mod)
+- [fold-entity-row](https://github.com/thomasloven/lovelace-fold-entity-row)
 
 **How to use it:**
 1. Go to **Settings → Dashboards → Add Dashboard**
