@@ -21,18 +21,10 @@ from .const import (
     CONF_DEHUMIDIFIER_SWITCH,
 )
 from .coordinator import GrowTentCoordinator
-from .notes import async_setup_notes_for_entry
 
 
-def device_info_for_entry(entry: ConfigEntry) -> dict:
-    """Return a DeviceInfo dict grouping all entities under one device per tent."""
-    return {
-        "identifiers": {(DOMAIN, entry.entry_id)},
-        "name": entry.title or "Small Grow Tent Controller",
-        "manufacturer": "Small Grow Tent Controller",
-        "model": "Grow Tent / Room",
-        "sw_version": VERSION,
-    }
+# Re-exported for backwards compatibility
+from .device_info import device_info_for_entry  # noqa: F401
 
 
 async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
@@ -82,6 +74,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    from .notes import async_setup_notes_for_entry
     await async_setup_notes_for_entry(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True

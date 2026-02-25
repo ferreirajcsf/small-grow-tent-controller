@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.storage import Store
 
-from . import device_info_for_entry
+from .device_info import device_info_for_entry
 from .const import DOMAIN, CONF_USE_LIGHT
 
 # Must match _DEFAULT_LIGHT_ON / _DEFAULT_LIGHT_OFF in coordinator.py

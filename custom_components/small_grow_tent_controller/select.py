@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.restore_state import RestoreEntity
 
-from . import device_info_for_entry
+from .device_info import device_info_for_entry
 from .const import (
     DEFAULT_STAGE,
     DOMAIN,

@@ -8,7 +8,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
-from . import device_info_for_entry
+from .device_info import device_info_for_entry
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
