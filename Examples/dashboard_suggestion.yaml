@@ -49,7 +49,6 @@ views:
                   {% set m = states('sensor.control_mode') %}
                   {% set map = {
                     'vpd_chase': 'Running — VPD Chase',
-                    'vpd_drives_temp': 'Running — VPD Drives Temperature',
                     'drying_hard_limits_only': 'Drying Mode',
                     'disabled': 'Controller Off',
                     'waiting_for_sensors': 'Waiting for Sensors',
@@ -69,7 +68,7 @@ views:
                   {{ states('sensor.grow_days_until_harvest') }} days to harvest
                 icon: >
                   {% set m = states('sensor.control_mode') %}
-                  {% if m in ['vpd_chase','vpd_drives_temp'] %} mdi:leaf-circle
+                  {% if m == 'vpd_chase' %} mdi:leaf-circle
                   {% elif m.startswith('hard_limit:') or m.startswith('safety_trip:') %} mdi:alert-circle
                   {% elif m.startswith('night_') %} mdi:weather-night
                   {% elif m == 'drying_hard_limits_only' %} mdi:hair-dryer
@@ -77,7 +76,7 @@ views:
                   {% else %} mdi:clock-outline {% endif %}
                 icon_color: >
                   {% set m = states('sensor.control_mode') %}
-                  {% if m in ['vpd_chase','vpd_drives_temp'] %} green
+                  {% if m == 'vpd_chase' %} green
                   {% elif m.startswith('hard_limit:') or m.startswith('safety_trip:') %} red
                   {% elif m.startswith('night_') %} indigo
                   {% elif m == 'drying_hard_limits_only' %} orange
@@ -114,16 +113,6 @@ views:
                 name: Target VPD
                 icon: mdi:gauge-empty
                 fill_container: true
-              - type: conditional
-                conditions:
-                  - entity: switch.small_grow_tent_controller_vpd_drives_temperature
-                    state: 'on'
-                card:
-                  type: custom:mushroom-entity-card
-                  entity: sensor.small_grow_tent_controller_vpd_driven_temp_target
-                  name: Solving for Temp
-                  icon: mdi:thermometer-auto
-                  fill_container: true
 
           # ── Temperature tile ──────────────────────────────────────
           - type: vertical-stack
@@ -190,8 +179,6 @@ views:
                     name: Canopy
                   - entity: sensor.top_temperature
                     name: Top
-                  - entity: sensor.small_grow_tent_controller_vpd_driven_temp_target
-                    name: Target
               - type: history-graph
                 title: Humidity (24h)
                 hours_to_show: 24
@@ -413,13 +400,6 @@ views:
                 tap_action:
                   action: toggle
                 fill_container: true
-              - type: custom:mushroom-entity-card
-                entity: switch.small_grow_tent_controller_vpd_drives_temperature
-                name: VPD Drives Temp
-                icon: mdi:thermometer-auto
-                tap_action:
-                  action: toggle
-                fill_container: true
               - type: custom:mushroom-number-card
                 entity: number.small_grow_tent_controller_vpd_target
                 name: VPD Target (kPa)
@@ -437,30 +417,12 @@ views:
             cards:
               - type: custom:mushroom-title-card
                 title: Temperature Target
-                subtitle: Used when not in VPD-drives-temp mode
+                subtitle: Temperature the controller chases during VPD chase
                 alignment: center
               - type: custom:mushroom-number-card
                 entity: number.small_grow_tent_controller_target_temperature
                 name: Target Temp (°C)
                 icon: mdi:thermometer
-                display_mode: buttons
-                fill_container: true
-                card_mod:
-                  style: >
-                    ha-card { padding-top: 4px !important; padding-bottom: 4px !important; }
-              - type: custom:mushroom-number-card
-                entity: number.small_grow_tent_controller_temp_ramp_fast_limit
-                name: Ramp Fast (°C/10min)
-                icon: mdi:speedometer
-                display_mode: buttons
-                fill_container: true
-                card_mod:
-                  style: >
-                    ha-card { padding-top: 4px !important; padding-bottom: 4px !important; }
-              - type: custom:mushroom-number-card
-                entity: number.small_grow_tent_controller_temp_ramp_slow_limit
-                name: Ramp Slow (°C/h)
-                icon: mdi:speedometer-slow
                 display_mode: buttons
                 fill_container: true
                 card_mod:
@@ -879,16 +841,6 @@ views:
                 name: Dew Point
                 icon: mdi:weather-fog
                 fill_container: true
-              - type: conditional
-                conditions:
-                  - entity: switch.small_grow_tent_controller_vpd_drives_temperature
-                    state: 'on'
-                card:
-                  type: custom:mushroom-entity-card
-                  entity: sensor.small_grow_tent_controller_vpd_driven_temp_target
-                  name: Driven Temp Target
-                  icon: mdi:thermometer-auto
-                  fill_container: true
               - type: custom:mushroom-entity-card
                 entity: sensor.small_grow_tent_controller_target_conflict
                 name: Target Conflict %

@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.28] - 2026-02-25
+
+### Removed
+
+- **VPD Drives Temperature mode** — removed entirely. The mode, its switch entity, its two ramp-limit number sliders (Temp Ramp Fast Limit, Temp Ramp Slow Limit), and its diagnostic sensors (VPD Driven Temp Target, VPD Driven Ideal Temp, VPD Driven Temp Clamped, VPD Driven Ramp Limited) have all been removed. The VPD Chase mode with Target Temperature and Target Humidity remains the standard day-time control strategy.
+
+### Fixed
+
+- **Exhaust safety is now a true system-wide safety** — previously the Exhaust Safety Override only blocked manual Off overrides. The check is now applied inside the low-level `_exhaust_off_if_on` helper, meaning every code path that tries to turn the exhaust off (hard limits, night mode, VPD chase, drying mode, manual override) is gated through the safety check. When the safety is enabled and temperature or humidity exceeds the configured thresholds, any attempt to turn the exhaust off is silently blocked and logged with a `[SAFETY: blocked_off]` suffix in the `debug_exhaust_reason` sensor.
+
+### ⚠️ Breaking Changes
+
+The following entities are removed. Update any automations, dashboard cards, or scripts that reference them before upgrading:
+
+- `switch.<n>_vpd_drives_temperature`
+- `sensor.<n>_vpd_driven_temp_target`
+- `number.<n>_temp_ramp_fast_limit`
+- `number.<n>_temp_ramp_slow_limit`
+- `sensor.<n>_debug_vpd_driven_ideal_temp`, `..._clamped`, `..._ramp_limited`
+
+---
+
 ## [0.1.27] - 2026-02-25
 
 ### New Features

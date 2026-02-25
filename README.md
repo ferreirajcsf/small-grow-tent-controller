@@ -22,10 +22,10 @@ Every 10 seconds it reads your sensors, calculates VPD and dew point, and decide
 
 **Smart environmental control**
 - Continuously chases your target VPD for each growth stage
-- **VPD-driven temperature mode** — when no humidifier/dehumidifier is present, the controller solves the ideal temperature for your current humidity to hit the VPD target, with configurable ramp rate limits to prevent sudden jumps
 - Calculates leaf-surface VPD (with configurable leaf temperature offset) for more accurate control
 - Automatic dew point calculation and dew-point protection at night
 - Hard safety limits for temperature and humidity that kick in before things go wrong
+- Target conflict detection — warns you when your Target Temperature and Target Humidity settings imply a different VPD than your VPD Target
 
 **Flexible device support**
 
@@ -63,7 +63,7 @@ The **VPD Target** slider lets you nudge the target for the current stage at any
 
 **Safety features**
 - Configurable heater max run time with automatic lockout
-- Exhaust safety override — prevents the exhaust from being forced off if temperature or humidity exceed safe thresholds
+- **Exhaust safety** — when enabled, the exhaust fan cannot be turned off by *any* part of the control logic (including hard limits, night mode, VPD chase, or manual Off override) while temperature or humidity exceed the configured safety thresholds. This is a true system-wide safety, not just a manual-override guard.
 - Anti-cycling protection via configurable hold times (prevents rapid on/off switching)
 - Controller can be fully disabled while keeping manual device overrides active
 
@@ -75,7 +75,7 @@ Each device has an Auto / On / Off mode selector. Set any device to On or Off to
 
 Once set up, the integration creates a full set of entities grouped under a single device in your HA UI:
 - Sensors for average temperature, humidity, VPD, dew point, leaf temperature, and control mode
-- Switches for the controller itself and exhaust safety override
+- Switches for the controller itself, VPD Chase, and exhaust safety override
 - Number sliders for all limits, deadbands, and hold times
 - Select entities for growth stage and per-device modes
 - Time helpers for your light on/off schedule
@@ -141,6 +141,8 @@ Once the integration is running, tune it from the entity controls in your dashbo
 | **Stage** | Sets the active growth stage and resets the VPD Target to its default |
 | **VPD Target** | Target VPD for the current stage — adjustable per stage, resets on stage change |
 | **VPD Chase** | When ON (default), actively chases VPD. When OFF, only hard limits are enforced |
+| **Target Temperature** | The temperature the controller chases during VPD chase mode |
+| **Target Humidity** | The humidity the controller nudges toward when VPD is in band |
 | **Min / Max Temperature** | Hard limits — heater or exhaust kicks in if breached |
 | **Min / Max Humidity** | Hard limits for RH |
 | **VPD Deadband** | How far VPD can drift before the controller acts (default 0.07 kPa) |
@@ -149,6 +151,8 @@ Once the integration is running, tune it from the entity controls in your dashbo
 | **Hold Times** | Minimum time between switching each device (prevents rapid cycling) |
 | **Grow Journal** | Use the dashboard text field to add dated notes; or call `small_grow_tent_controller.add_note` from an automation |
 | **Heater Max Run Time** | Safety cutoff — heater is forced off and locked out if it runs too long (0 = disabled) |
+| **Exhaust Safety Override** | When ON, prevents the exhaust from turning off above the safety thresholds (temp or RH), regardless of what triggered the turn-off |
+| **Exhaust Safety Max Temperature / Humidity** | The thresholds used by the exhaust safety — exhaust stays on if either is exceeded |
 
 ---
 
@@ -159,8 +163,10 @@ The controller runs every 10 seconds and works through a priority stack — high
 ### 1. Manual overrides
 If any device is set to On or Off (not Auto), that device is locked to that state regardless of everything else. The desired state is enforced every cycle, so the controller will correct any external change within ~10 seconds. The rest of the controller still runs normally for Auto devices.
 
+For the exhaust fan, if the manual mode is Off but the **Exhaust Safety** is enabled and a threshold is exceeded, the fan is kept on regardless of the override — the reason is logged as `override:off_blocked_by_safety`.
+
 ### 2. Disabled state
-If the controller switch is off, automatic control stops. Manual overrides (On/Off modes) still work, but Auto devices are left alone.
+If the controller switch is off, automatic control stops. Manual overrides (On/Off modes) still work, but Auto devices are left alone. The exhaust safety still applies even in the disabled state.
 
 ### 3. Drying mode
 When the stage is set to **Drying**, lights are always off and the controller enforces only hard temperature and humidity limits — no VPD chasing.
@@ -190,18 +196,18 @@ During the lights-on period, if temperature or humidity breach their min/max lim
 | RH above max | Exhaust on + dehumidifier on + humidifier off |
 | RH below min | Exhaust off + humidifier on + dehumidifier off |
 
+If the **Exhaust Safety** is enabled and its thresholds are exceeded, any attempt to turn the exhaust off (including from a hard limit like `temp_below_min`) is silently blocked — the fan stays on and the reason is logged with a `[SAFETY: blocked_off]` suffix.
+
 ### 7. Day mode — VPD chase
 When everything is within limits and the **VPD Chase** switch is ON, the controller fine-tunes conditions by chasing the stage's VPD target within the configured deadband, using the heater, exhaust, humidifier, and dehumidifier as needed.
 
 When VPD Chase is OFF, the controller operates in **limits-only mode**: devices are left neutral as long as temp and RH stay within their min/max limits. Useful for simpler thermostat/humidistat style control.
 
-> **Note:** If you have no humidifier or dehumidifier, the controller will still use the heater and exhaust to influence VPD where possible. In cases where only humidity adjustment would help (e.g. VPD too high with no humidifier), the controller goes neutral and relies on the tent's natural humidity recovering on its own — no errors, no unexpected behaviour.
-
 ---
 
 ## Example Dashboard
 
-![Dashboard Screenshot](images/dashboard_preview.png)
+![Dashboard Screenshot](images/screenshot)
 
 An example Lovelace dashboard is included in the `Examples/` folder. It is structured across four views — Status, Targets, Devices, and Debug — so the most-used information is always front and centre.
 
@@ -233,6 +239,9 @@ Make sure the entity IDs you assigned in the config are `switch.*` entities and 
 
 **A device override (On/Off) doesn't seem to be taking effect**
 The controller enforces the desired state every ~10 seconds. If a device isn't responding, check that the switch entity is reachable and not reporting `unavailable` in HA.
+
+**The exhaust fan won't turn off**
+If the Exhaust Safety is enabled and your temperature or humidity is above the safety thresholds, the fan will refuse to turn off regardless of the control mode or manual override. Check the `debug_exhaust_reason` sensor — if it contains `[SAFETY: blocked_off]`, that's why. Lower your safety thresholds, or disable the Exhaust Safety if conditions are truly safe.
 
 **Something seems wrong with the logic**
 Enable the `debug_*` sensors via **Settings → Entities** — they show exactly what the controller is doing and why on every cycle.
