@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.27] - 2026-02-25
+
+### New Features
+
+- **Grow Journal** — built-in timestamped note log persisted in HA's `.storage` directory.
+  - New `sensor.<n>_grow_journal` entity — state is the note count; `notes` attribute holds the
+    full list (newest first) for dashboard rendering
+  - New `button.<n>_clear_last_note` and `button.<n>_clear_all_notes` buttons
+  - New `small_grow_tent_controller.add_note` service (accepts `text` + optional `entry_id`)
+  - Dashboard: add notes from a text input field, view the full log as a formatted markdown list
+    in the Grow Cycle section of the Status view
+  - Requires one HA Text helper named **Grow Note Input** (`input_text.grow_note_input`)
+
+---
+
 ## [0.1.26] - 2026-02-24
 
 ### Bug Fixes

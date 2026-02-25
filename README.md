@@ -55,6 +55,12 @@ Switch between stages and the controller automatically adjusts its VPD targets:
 
 The **VPD Target** slider lets you nudge the target for the current stage at any time. When you switch stage, it resets to that stage's default automatically (~10 second delay).
 
+**Grow Journal**
+- Built-in timestamped grow log — record observations, training events, nutrient changes, anything
+- Notes persist across restarts in HA's `.storage` directory
+- Add notes from the dashboard via a text input; clear the last entry or all entries with one tap
+- Accessible via the `small_grow_tent_controller.add_note` service for automations
+
 **Safety features**
 - Configurable heater max run time with automatic lockout
 - Exhaust safety override — prevents the exhaust from being forced off if temperature or humidity exceed safe thresholds
@@ -141,6 +147,7 @@ Once the integration is running, tune it from the entity controls in your dashbo
 | **Dew Point Margin** | How many °C above dew point the heater targets at night (default 1.0°C) |
 | **Light On / Off Time** | Your light schedule — the controller follows this for day/night logic |
 | **Hold Times** | Minimum time between switching each device (prevents rapid cycling) |
+| **Grow Journal** | Use the dashboard text field to add dated notes; or call `small_grow_tent_controller.add_note` from an automation |
 | **Heater Max Run Time** | Safety cutoff — heater is forced off and locked out if it runs too long (0 = disabled) |
 
 ---
@@ -194,6 +201,8 @@ When VPD Chase is OFF, the controller operates in **limits-only mode**: devices 
 
 ## Example Dashboard
 
+![Dashboard Screenshot](images/dashboard_preview.png)
+
 An example Lovelace dashboard is included in the `Examples/` folder. It is structured across four views — Status, Targets, Devices, and Debug — so the most-used information is always front and centre.
 
 **Required custom cards** (install via HACS):
@@ -207,6 +216,7 @@ An example Lovelace dashboard is included in the `Examples/` folder. It is struc
 2. Give it a name and enable **YAML mode**
 3. Paste the contents of `Examples/dashboard.yaml`
 4. Update any entity IDs in the file to match your setup
+5. Create a **Text helper** (Settings → Helpers → Text) named `Grow Note Input` — this powers the journal entry field in the dashboard
 
 ---
 

@@ -1,3 +1,9 @@
+# Small Grow Tent Controller — Single-view dashboard (dashboard.yaml)
+# Requires: layout-card, Mushroom cards, card-mod, fold-entity-row
+#
+# JOURNAL SETUP: Before using the journal section, create a Text helper in HA:
+#   Settings → Helpers → Add Helper → Text
+#   Name: Grow Note Input  (this gives you entity: input_text.grow_note_input)
 title: Grow Tent
 views:
   - title: Controller
@@ -19,7 +25,7 @@ views:
           grid-auto-rows: minmax(160px, auto)
         cards:
 
-          # ── ROW 1 COL 1 ── Grow Tent (status + switches) ──────────────
+          # ── Grow Tent (status + switches) ─────────────────────────
           - type: vertical-stack
             view_layout:
               grid-area: small
@@ -114,7 +120,7 @@ views:
                       action: toggle
                     fill_container: true
 
-          # ── ROW 1 COL 2 ── Calculations ───────────────────────────────
+          # ── Calculations ───────────────────────────────────────────
           - type: vertical-stack
             view_layout:
               grid-area: calc
@@ -162,7 +168,7 @@ views:
                       icon: mdi:thermometer-auto
                       fill_container: true
 
-          # ── ROW 1 COL 3 ── Environment ────────────────────────────────
+          # ── Environment ────────────────────────────────────────────
           - type: vertical-stack
             view_layout:
               grid-area: env
@@ -200,7 +206,7 @@ views:
                     icon: mdi:water-percent
                     fill_container: true
 
-          # ── ROW 2 COL 1 ── Tuning / Safety ───────────────────────────
+          # ── Tuning / Safety ────────────────────────────────────────
           - type: vertical-stack
             view_layout:
               grid-area: tuning
@@ -315,7 +321,7 @@ views:
                         style: >
                           ha-card { padding-top: 4px !important; padding-bottom: 4px !important; }
 
-          # ── ROW 2 COLS 2+3 ── Devices (spans 2 cols → repeat(4) inside) ──
+          # ── Devices + Targets ──────────────────────────────────────
           - type: vertical-stack
             view_layout:
               grid-area: devtgt
@@ -469,8 +475,6 @@ views:
                           name: Mode
                           icon: mdi:tune-variant
                           fill_container: true
-
-          # ── ROW 3 COLS 1+2 ── Targets (spans 2 cols → repeat(4) inside) ──
               - type: custom:mushroom-title-card
                 title: Targets
                 subtitle: VPD chase goals -- controller works toward these values
@@ -482,7 +486,7 @@ views:
                     above: 15
                 card:
                   type: custom:mushroom-template-card
-                  primary: "Target Conflict -- VPD too low"
+                  primary: Target Conflict -- VPD too low
                   secondary: >
                     Temp + RH imply {{ states('sensor.small_grow_tent_controller_target_vpd_implied') }} kPa,
                     target is {{ states('number.small_grow_tent_controller_vpd_target') }} kPa.
@@ -496,7 +500,7 @@ views:
                     below: -15
                 card:
                   type: custom:mushroom-template-card
-                  primary: "Target Conflict -- VPD too high"
+                  primary: Target Conflict -- VPD too high
                   secondary: >
                     Temp + RH imply {{ states('sensor.small_grow_tent_controller_target_vpd_implied') }} kPa,
                     target is {{ states('number.small_grow_tent_controller_vpd_target') }} kPa.
@@ -557,8 +561,7 @@ views:
                       style: >
                         ha-card { padding-top: 4px !important; padding-bottom: 4px !important; }
 
-          # ── ROW 3 COL 3 ── Limits ─────────────────────────────────────
-
+          # ── Limits ─────────────────────────────────────────────────
           - type: vertical-stack
             view_layout:
               grid-area: limits
@@ -632,8 +635,7 @@ views:
                       icon: mdi:weather-night
                       fill_container: true
 
-
-          # ── CYCLE ROW ── Grow Cycle (full width) ─────────────────────
+          # ── Grow Cycle + Journal ───────────────────────────────────
           - type: vertical-stack
             view_layout:
               grid-area: cycle
@@ -683,7 +685,70 @@ views:
                     icon: mdi:calendar-end
                     fill_container: true
 
-          # ── ROW 4 ── Trend graphs (1 per column) ──────────────────────
+              # ── Grow Journal ───────────────────────────────────────
+              - type: custom:mushroom-title-card
+                title: Grow Journal
+                subtitle: Timestamped notes for this grow
+                alignment: center
+              - type: horizontal-stack
+                cards:
+                  - type: custom:mushroom-entity-card
+                    entity: sensor.small_grow_tent_controller_grow_journal
+                    name: Notes recorded
+                    icon: mdi:notebook-edit-outline
+                    fill_container: true
+                  - type: custom:mushroom-entity-card
+                    entity: button.small_grow_tent_controller_clear_last_note
+                    name: Clear Last
+                    icon: mdi:notebook-minus-outline
+                    tap_action:
+                      action: call-service
+                      service: button.press
+                      target:
+                        entity_id: button.small_grow_tent_controller_clear_last_note
+                    fill_container: true
+                  - type: custom:mushroom-entity-card
+                    entity: button.small_grow_tent_controller_clear_all_notes
+                    name: Clear All
+                    icon: mdi:notebook-remove-outline
+                    tap_action:
+                      action: call-service
+                      service: button.press
+                      target:
+                        entity_id: button.small_grow_tent_controller_clear_all_notes
+                    fill_container: true
+              - type: horizontal-stack
+                cards:
+                  - type: entities
+                    entities:
+                      - entity: input_text.grow_note_input
+                        name: New note
+                  - type: custom:mushroom-template-card
+                    primary: Add Note
+                    icon: mdi:plus-circle-outline
+                    icon_color: green
+                    fill_container: false
+                    tap_action:
+                      action: call-service
+                      service: small_grow_tent_controller.add_note
+                      service_data:
+                        text: "{{ states('input_text.grow_note_input') }}"
+              - type: markdown
+                content: >
+                  {% set notes = state_attr('sensor.small_grow_tent_controller_grow_journal','notes') %}
+                  {% if not notes or notes | count == 0 %}
+                  *No notes yet. Add your first note above.*
+                  {% else %}
+                  {% for n in notes %}
+                  **{{ n.ts }}** — {{ n.text }}
+                  {% if not loop.last %}
+
+                  ---
+                  {% endif %}
+                  {% endfor %}
+                  {% endif %}
+
+          # ── Trend graphs ───────────────────────────────────────────
           - type: history-graph
             view_layout:
               grid-area: temp
@@ -721,7 +786,7 @@ views:
               - entity: sensor.vpd
                 name: VPD
 
-          # ── ROW 5 ── Debug (full width) ───────────────────────────────
+          # ── Debug ──────────────────────────────────────────────────
           - type: vertical-stack
             view_layout:
               grid-area: debug
