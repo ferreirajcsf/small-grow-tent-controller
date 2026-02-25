@@ -362,10 +362,20 @@ views:
                 layout_type: grid
                 layout:
                   grid-template-columns: repeat(2, 1fr)
-                  grid-auto-rows: 100px
+                  grid-auto-rows: auto
                   grid-column-gap: 8px
                   grid-row-gap: 8px
                 cards:
+                  - type: custom:mushroom-template-card
+                    primary: "{% set t=states('number.small_grow_tent_controller_target_temperature')|float(0) %}{% set rh=states('number.small_grow_tent_controller_target_humidity')|float(0) %}{% set lo=states('number.leaf_temp_offset')|float(0) %}{% set vt=states('number.small_grow_tent_controller_vpd_target')|float(0) %}{% set lt=t+lo %}{% set s=0.6108*e**(17.27*lt/(lt+237.3)) %}{% set a=(rh/100)*0.6108*e**(17.27*t/(t+237.3)) %}{% set implied=([s-a,0]|max)|round(2) %}{% set d=(implied-vt)|abs %}{% if d<=0.05 %}Targets in agreement{% elif d<=0.15 %}Targets close — minor divergence{% else %}Targets conflict{% endif %}"
+                    secondary: "{% set t=states('number.small_grow_tent_controller_target_temperature')|float(0) %}{% set rh=states('number.small_grow_tent_controller_target_humidity')|float(0) %}{% set lo=states('number.leaf_temp_offset')|float(0) %}{% set vt=states('number.small_grow_tent_controller_vpd_target')|float(0) %}{% set lt=t+lo %}{% set s=0.6108*e**(17.27*lt/(lt+237.3)) %}{% set a=(rh/100)*0.6108*e**(17.27*t/(t+237.3)) %}{% set implied=([s-a,0]|max)|round(2) %}VPD target {{ vt }} kPa · Temp+RH imply {{ implied }} kPa"
+                    icon: "{% set t=states('number.small_grow_tent_controller_target_temperature')|float(0) %}{% set rh=states('number.small_grow_tent_controller_target_humidity')|float(0) %}{% set lo=states('number.leaf_temp_offset')|float(0) %}{% set vt=states('number.small_grow_tent_controller_vpd_target')|float(0) %}{% set lt=t+lo %}{% set s=0.6108*e**(17.27*lt/(lt+237.3)) %}{% set a=(rh/100)*0.6108*e**(17.27*t/(t+237.3)) %}{% set d=([s-a,0]|max-vt)|abs %}{% if d<=0.05 %}mdi:check-circle-outline{% elif d<=0.15 %}mdi:alert-circle-outline{% else %}mdi:close-circle-outline{% endif %}"
+                    icon_color: "{% set t=states('number.small_grow_tent_controller_target_temperature')|float(0) %}{% set rh=states('number.small_grow_tent_controller_target_humidity')|float(0) %}{% set lo=states('number.leaf_temp_offset')|float(0) %}{% set vt=states('number.small_grow_tent_controller_vpd_target')|float(0) %}{% set lt=t+lo %}{% set s=0.6108*e**(17.27*lt/(lt+237.3)) %}{% set a=(rh/100)*0.6108*e**(17.27*t/(t+237.3)) %}{% set d=([s-a,0]|max-vt)|abs %}{% if d<=0.05 %}green{% elif d<=0.15 %}orange{% else %}red{% endif %}"
+                    fill_container: true
+                    layout: horizontal
+                    card_mod:
+                      style: >
+                        ha-card { grid-column: span 2; }
                   - type: custom:mushroom-number-card
                     entity: number.small_grow_tent_controller_vpd_target
                     name: VPD Target
