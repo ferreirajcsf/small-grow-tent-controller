@@ -10,6 +10,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 
 from .device_info import device_info_for_entry
 from .const import DOMAIN
+from .notes import ClearLastNoteButton, ClearAllNotesButton
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -24,7 +25,13 @@ MODE_KEYS = [
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback):
-    async_add_entities([ReturnAllDevicesToAutoButton(hass, entry)])
+    buttons = [ReturnAllDevicesToAutoButton(hass, entry)]
+    # Add grow journal buttons — store is ready, sensor ref filled in later by sensor platform
+    coordinator = hass.data[DOMAIN][entry.entry_id]
+    if hasattr(coordinator, '_notes_store'):
+        buttons.append(ClearLastNoteButton(entry, coordinator))
+        buttons.append(ClearAllNotesButton(entry, coordinator))
+    async_add_entities(buttons)
 
 
 class ReturnAllDevicesToAutoButton(ButtonEntity):

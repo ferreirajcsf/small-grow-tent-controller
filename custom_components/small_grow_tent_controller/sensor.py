@@ -8,6 +8,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .device_info import device_info_for_entry
 from .const import DOMAIN
+from .notes import GrowJournalSensor
 
 # (key, name, device_class, unit, is_debug)
 SENSORS = [
@@ -57,10 +58,16 @@ async def async_setup_entry(
     async_add_entities: AddEntitiesCallback,
 ) -> None:
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    async_add_entities([
+    entities = [
         GrowTentSensor(entry, coordinator, key, name, devcls, unit, is_debug)
         for key, name, devcls, unit, is_debug in SENSORS
-    ])
+    ]
+    # Add grow journal sensor (store already loaded by __init__.py)
+    if hasattr(coordinator, '_notes_store'):
+        journal = GrowJournalSensor(entry, coordinator._notes_store)
+        coordinator._notes_sensor = journal
+        entities.append(journal)
+    async_add_entities(entities)
 
 
 class GrowTentSensor(CoordinatorEntity, SensorEntity):

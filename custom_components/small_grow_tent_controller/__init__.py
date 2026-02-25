@@ -73,9 +73,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
+    from .notes import async_setup_notes_store
+    await async_setup_notes_store(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
-    from .notes import async_setup_notes_for_entry
-    await async_setup_notes_for_entry(hass, entry)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
 

@@ -1,18 +1,15 @@
 """
-Grow Journal — persistent dated notes stored in HA's .storage directory.
+Grow Journal — persistent dated notes.
 
 Storage:  .storage/small_grow_tent_controller.notes.<entry_id>
 Schema:   {"notes": [{"ts": "2026-02-24 14:30", "text": "..."}]}
 
-Entities (registered directly via entity_component helpers in __init__.py):
-  sensor.<name>_grow_journal      — state = note count, attrs = full list
-  button.<name>_clear_last_note   — removes the most recent note
-  button.<name>_clear_all_notes   — removes all notes
-
-Service:
-  small_grow_tent_controller.add_note
-    text:     str   — the note to add (required)
-    entry_id: str   — which tent (optional, defaults to first entry)
+Entities are registered through the normal sensor/button platform setup
+in sensor.py and button.py respectively.  This file provides:
+  - NotesStore      — persistence
+  - GrowJournalSensor, ClearLastNoteButton, ClearAllNotesButton — entities
+  - async_setup_notes_store() — creates + loads the store, attaches to coordinator
+  - register_add_note_service() — registers the HA service (called once)
 """
 from __future__ import annotations
 
@@ -90,7 +87,7 @@ class GrowJournalSensor(SensorEntity):
     def extra_state_attributes(self) -> dict[str, Any]:
         notes = self._store.notes
         return {
-            "notes": list(reversed(notes)),   # newest first
+            "notes": list(reversed(notes)),
             "latest": notes[-1] if notes else None,
         }
 
@@ -106,15 +103,15 @@ class ClearLastNoteButton(ButtonEntity):
     _attr_icon = "mdi:notebook-minus-outline"
     _attr_should_poll = False
 
-    def __init__(self, entry: ConfigEntry, store: NotesStore, sensor: GrowJournalSensor) -> None:
-        self._store  = store
-        self._sensor = sensor
+    def __init__(self, entry: ConfigEntry, coordinator: Any) -> None:
+        self._coordinator = coordinator
         self._attr_unique_id   = f"{entry.entry_id}_clear_last_note"
         self._attr_device_info = device_info_for_entry(entry)
 
     async def async_press(self) -> None:
-        await self._store.async_clear_last()
-        self._sensor.refresh()
+        await self._coordinator._notes_store.async_clear_last()
+        if self._coordinator._notes_sensor:
+            self._coordinator._notes_sensor.refresh()
 
 
 class ClearAllNotesButton(ButtonEntity):
@@ -123,67 +120,58 @@ class ClearAllNotesButton(ButtonEntity):
     _attr_icon = "mdi:notebook-remove-outline"
     _attr_should_poll = False
 
-    def __init__(self, entry: ConfigEntry, store: NotesStore, sensor: GrowJournalSensor) -> None:
-        self._store  = store
-        self._sensor = sensor
+    def __init__(self, entry: ConfigEntry, coordinator: Any) -> None:
+        self._coordinator = coordinator
         self._attr_unique_id   = f"{entry.entry_id}_clear_all_notes"
         self._attr_device_info = device_info_for_entry(entry)
 
     async def async_press(self) -> None:
-        await self._store.async_clear_all()
-        self._sensor.refresh()
+        await self._coordinator._notes_store.async_clear_all()
+        if self._coordinator._notes_sensor:
+            self._coordinator._notes_sensor.refresh()
 
 
-# ── Setup (called from __init__.py after all platforms are loaded) ────────────
+# ── Store bootstrap (called from coordinator setup in __init__.py) ─────────────
 
-async def async_setup_notes_for_entry(
+async def async_setup_notes_store(
     hass: HomeAssistant,
     entry: ConfigEntry,
-) -> None:
+) -> NotesStore:
     """
-    Create the notes store, sensor, and buttons for one config entry.
-    Uses entity_component helpers so entities appear under the correct device
-    without needing a dedicated platform file.
-    Called from async_setup_entry in __init__.py after platforms are forwarded.
+    Create and load the NotesStore for this entry.
+    Attaches store + a placeholder sensor ref to the coordinator so the
+    sensor/button platform setup functions can retrieve them.
+    Called from async_setup_entry BEFORE platforms are forwarded.
     """
     store = NotesStore(hass, entry.entry_id)
     await store.async_load()
 
-    sensor = GrowJournalSensor(entry, store)
-
-    # Register sensor via the sensor component's entity adder
-    from homeassistant.helpers import entity_component as ec
-    sensor_component  = hass.data.get("entity_components", {}).get("sensor")
-    button_component  = hass.data.get("entity_components", {}).get("button")
-
-    if sensor_component:
-        await sensor_component.async_add_entities([sensor])
-    if button_component:
-        await button_component.async_add_entities([
-            ClearLastNoteButton(entry, store, sensor),
-            ClearAllNotesButton(entry, store, sensor),
-        ])
-
-    # Attach to coordinator so the service handler can reach this entry's store
     coordinator = hass.data[DOMAIN][entry.entry_id]
     coordinator._notes_store  = store
-    coordinator._notes_sensor = sensor
+    coordinator._notes_sensor = None   # filled in by sensor platform setup
 
-    # Register the add_note service once across all entries
-    if not hass.services.has_service(DOMAIN, "add_note"):
-        async def handle_add_note(call: ServiceCall) -> None:
-            text: str = call.data.get("text", "").strip()
-            if not text:
-                _LOGGER.warning("add_note called with empty text")
+    register_add_note_service(hass)
+    return store
+
+
+def register_add_note_service(hass: HomeAssistant) -> None:
+    """Register add_note service once across all entries."""
+    if hass.services.has_service(DOMAIN, "add_note"):
+        return
+
+    async def handle_add_note(call: ServiceCall) -> None:
+        text: str = call.data.get("text", "").strip()
+        if not text:
+            _LOGGER.warning("add_note called with empty text")
+            return
+        target = call.data.get("entry_id")
+        for eid, coord in hass.data.get(DOMAIN, {}).items():
+            if (target is None or eid == target) and hasattr(coord, "_notes_store"):
+                await coord._notes_store.async_add(text)
+                if coord._notes_sensor:
+                    coord._notes_sensor.refresh()
                 return
-            target = call.data.get("entry_id")
-            for eid, coord in hass.data.get(DOMAIN, {}).items():
-                if target is None or eid == target:
-                    if hasattr(coord, "_notes_store"):
-                        await coord._notes_store.async_add(text)
-                        coord._notes_sensor.refresh()
-                        return
-            _LOGGER.warning("add_note: no matching entry found for entry_id=%s", target)
+        _LOGGER.warning("add_note: no matching entry for entry_id=%s", target)
 
-        hass.services.async_register(DOMAIN, "add_note", handle_add_note)
-        _LOGGER.debug("Registered service %s.add_note", DOMAIN)
+    hass.services.async_register(DOMAIN, "add_note", handle_add_note)
+    _LOGGER.debug("Registered service %s.add_note", DOMAIN)
