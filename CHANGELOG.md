@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.31] - 2026-02-26
+
+### Fixed
+
+- **VPD chase exhaust fallback** — when no dehumidifier is configured, the VPD chase logic now correctly falls back to the exhaust fan as the humidity-reduction device. Previously, the three branches that needed to reduce humidity (`vpd_low: temp above target`, `vpd_low: temp at target`, and `vpd_inband: rh above target`) all called `_dehumidifier_on` and did nothing when no dehumidifier was configured, causing the controller to appear frozen even when VPD was well outside the deadband.
+
+  A new `_reduce_humidity` helper encapsulates the fallback logic: use the dehumidifier if one is configured, otherwise turn on the exhaust fan. A matching `_stop_reducing_humidity` helper is also added for symmetry.
+
+---
+
 ## [0.1.30] - 2026-02-26
 
 ### Added

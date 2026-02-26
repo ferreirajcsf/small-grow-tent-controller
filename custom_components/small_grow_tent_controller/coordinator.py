@@ -564,17 +564,15 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             elif ctx.avg_temp > (target_temp + temp_db):
                 # Temp above target — exhaust to cool, dehumidifier to lower RH
                 await self._heater_off(ctx, "vpd_low: temp above target -> heater_off")
-                await self._exhaust_on_if_off(ctx, "vpd_low: temp above target -> exhaust_on")
-                await self._dehumidifier_on(ctx)
-                ctx.data["debug_dehumidifier_reason"] = "vpd_low: temp high -> dehumidifier_on"
+                await self._reduce_humidity(ctx, "vpd_low: temp high -> reduce_humidity")
+                ctx.data["debug_dehumidifier_reason"] = "vpd_low: temp high -> reduce_humidity (dehumidifier or exhaust)"
                 await self._humidifier_off(ctx)
                 ctx.data["debug_humidifier_reason"] = "vpd_low: temp high -> humidifier_off"
             else:
                 # Temp at target — humidity is the issue, use dehumidifier
                 await self._heater_off(ctx, "vpd_low: temp ok -> heater_off")
-                await self._exhaust_off_if_on(ctx, "vpd_low: temp ok -> exhaust_off")
-                await self._dehumidifier_on(ctx)
-                ctx.data["debug_dehumidifier_reason"] = "vpd_low: temp ok -> dehumidifier_on"
+                await self._reduce_humidity(ctx, "vpd_low: temp ok -> reduce_humidity")
+                ctx.data["debug_dehumidifier_reason"] = "vpd_low: temp ok -> reduce_humidity (dehumidifier or exhaust)"
                 await self._humidifier_off(ctx)
                 ctx.data["debug_humidifier_reason"] = "vpd_low: -> humidifier_off"
 
@@ -620,10 +618,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ctx.data["debug_humidifier_reason"]   = "vpd_inband: rh below target -> humidifier_on"
                 ctx.data["debug_dehumidifier_reason"] = "vpd_inband: rh below target -> dehumidifier_off"
             elif ctx.avg_rh > (target_rh + rh_db):
-                await self._dehumidifier_on(ctx)
+                await self._reduce_humidity(ctx, "vpd_inband: rh above target -> reduce_humidity")
                 await self._humidifier_off(ctx)
                 ctx.data["debug_humidifier_reason"]   = "vpd_inband: rh above target -> humidifier_off"
-                ctx.data["debug_dehumidifier_reason"] = "vpd_inband: rh above target -> dehumidifier_on"
+                ctx.data["debug_dehumidifier_reason"] = "vpd_inband: rh above target -> reduce_humidity (dehumidifier or exhaust)"
             else:
                 await self._humidifier_off(ctx)
                 await self._dehumidifier_off(ctx)
@@ -709,6 +707,20 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.control.last_dehumidifier_change = ctx.now
             self._record_action(f"Dehumidifier OFF · {reason}")
             ctx.dehumidifier_on = False
+
+    async def _reduce_humidity(self, ctx: _Ctx, reason: str = "auto") -> None:
+        """Reduce humidity: use dehumidifier if configured, otherwise exhaust fan."""
+        if ctx.dehumidifier_eid:
+            await self._dehumidifier_on(ctx, reason)
+        else:
+            await self._exhaust_on_if_off(ctx, f"{reason} [fallback: exhaust]")
+
+    async def _stop_reducing_humidity(self, ctx: _Ctx, reason: str = "auto") -> None:
+        """Stop active humidity reduction — mirrors _reduce_humidity."""
+        if ctx.dehumidifier_eid:
+            await self._dehumidifier_off(ctx, reason)
+        else:
+            await self._exhaust_off_if_on(ctx, f"{reason} [fallback: exhaust]")
 
     async def _circ_on(self, ctx: _Ctx, reason: str = "auto") -> None:
         if not ctx.circ_on and ctx.circ_eid:
