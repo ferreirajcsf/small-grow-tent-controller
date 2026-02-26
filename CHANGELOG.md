@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.30] - 2026-02-26
+
+### Added
+
+- **Local brand images** — `icon.png` and `logo.png` moved into a new `brand/` subfolder inside the integration directory, as required by Home Assistant 2026.3+. Custom integrations can now ship their own brand images directly without submitting to the `home-assistant/brands` repository. Local images automatically take priority over the CDN.
+
+---
+
 ## [0.1.29] - 2026-02-26
 
 ### Added
