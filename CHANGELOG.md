@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.29] - 2026-02-26
+
+### Added
+
+- **VPD Congruence card in the Targets section** — a new `mushroom-template-card` sits at the top of the Targets panel and instantly shows whether the three target values (VPD Target, Target Temp, Target RH) are mutually consistent.
+  - Shows a green ✅ and "Targets are congruent" when the implied VPD (derived from Target Temp + Target RH) is within the deadband of the VPD Target.
+  - Shows an orange ⚠️ warning with a suggested RH correction when a conflict is detected, replacing the need to read two separate conditional conflict cards.
+  - Uses the existing `sensor.small_grow_tent_controller_target_conflict`, `sensor.small_grow_tent_controller_target_vpd_implied`, and `sensor.small_grow_tent_controller_target_implied_rh` sensors — no new backend entities required.
+- **Dashboard screenshot updated** — `images/screenshot_v0.1.29.png` added; README example-dashboard section now points to this file.
+
+---
+
 ## [0.1.28] - 2026-02-25
 
 ### Removed

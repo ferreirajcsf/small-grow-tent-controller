@@ -3,7 +3,8 @@
 #
 # JOURNAL SETUP: Before using the journal section, create a Text helper in HA:
 #   Settings → Helpers → Add Helper → Text
-#   Name: Grow Note Input  (this gives you entity: input_text.grow_note_input)
+#   Name: Grow Note Input  (entity_id will become input_text.grow_note_input)
+---
 title: Grow Tent
 views:
   - title: Controller
@@ -306,11 +307,46 @@ views:
             view_layout:
               grid-area: devtgt
             cards:
-              # ── TARGETS (was below, now first) ──────────────────────────────
               - type: custom:mushroom-title-card
                 title: Targets
                 subtitle: VPD chase goals -- controller works toward these values
                 alignment: center
+
+              # ── VPD Congruence card ────────────────────────────────────────
+              # Shows whether Target Temp + Target RH are mutually consistent
+              # with the VPD Target, using the same implied-VPD sensors the
+              # controller exposes.  Green = all three values agree; orange =
+              # conflict detected with a suggested fix.
+              - type: custom:mushroom-template-card
+                primary: >
+                  {% set diff = states('sensor.small_grow_tent_controller_target_conflict') | float(0) %}
+                  {% if diff | abs <= 15 %}
+                  ✅ Targets are congruent
+                  {% elif diff > 15 %}
+                  ⚠️ Conflict — implied VPD too low
+                  {% else %}
+                  ⚠️ Conflict — implied VPD too high
+                  {% endif %}
+                secondary: >
+                  {% set vpd_t  = states('number.small_grow_tent_controller_vpd_target') %}
+                  {% set vpd_i  = states('sensor.small_grow_tent_controller_target_vpd_implied') %}
+                  {% set rh_fix = states('sensor.small_grow_tent_controller_target_implied_rh') %}
+                  {% set diff   = states('sensor.small_grow_tent_controller_target_conflict') | float(0) %}
+                  VPD target {{ vpd_t }} kPa · implied {{ vpd_i }} kPa
+                  {%- if diff | abs > 15 %} · try RH ≈ {{ rh_fix }}%{% endif %}
+                icon: >
+                  {% set diff = states('sensor.small_grow_tent_controller_target_conflict') | float(0) %}
+                  {% if diff | abs <= 15 %}
+                  mdi:check-circle-outline
+                  {% else %}
+                  mdi:alert-circle-outline
+                  {% endif %}
+                icon_color: >
+                  {% set diff = states('sensor.small_grow_tent_controller_target_conflict') | float(0) %}
+                  {% if diff | abs <= 15 %}green{% else %}orange{% endif %}
+                fill_container: true
+              # ── end VPD Congruence card ────────────────────────────────────
+
               - type: conditional
                 conditions:
                   - condition: numeric_state
@@ -385,7 +421,6 @@ views:
                       style: >
                         ha-card { padding-top: 4px !important; padding-bottom:
                         4px !important; }
-              # ── DEVICES (was first, now below) ──────────────────────────────
               - type: custom:mushroom-title-card
                 title: Devices
                 subtitle: Controls + mode overrides
@@ -783,4 +818,4 @@ views:
                     name: Is Day
                     icon: mdi:white-balance-sunny
                     fill_container: true
-    type: custom:grid-layout
+        type: custom:grid-layout

@@ -207,7 +207,7 @@ When VPD Chase is OFF, the controller operates in **limits-only mode**: devices 
 
 ## Example Dashboard
 
-![Dashboard Screenshot](images/screenshot.png)
+![Dashboard Screenshot](images/screenshot_v0.1.29.png)
 
 An example Lovelace dashboard is included in the `Examples/` folder. It is structured across four views — Status, Targets, Devices, and Debug — so the most-used information is always front and centre.
 
