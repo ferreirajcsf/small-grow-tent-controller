@@ -207,7 +207,7 @@ When VPD Chase is OFF, the controller operates in **limits-only mode**: devices 
 
 ## Example Dashboard
 
-![Dashboard Screenshot](images/screenshot_v0.1.29.png)
+![Dashboard Screenshot](images/dashboard_screenshot.png)
 
 An example Lovelace dashboard is included in the `Examples/` folder. It is structured across four views — Status, Targets, Devices, and Debug — so the most-used information is always front and centre.
 
@@ -223,6 +223,16 @@ An example Lovelace dashboard is included in the `Examples/` folder. It is struc
 3. Paste the contents of `Examples/dashboard.yaml`
 4. Update any entity IDs in the file to match your setup
 5. Create a **Text helper** (Settings → Helpers → Text) named `Grow Note Input` — this powers the journal entry field in the dashboard
+6. Add the following script to your `scripts.yaml` so the Add Note button can read the text field and pass it to the journal service, then reload scripts via **Developer Tools → YAML → Reload Scripts**:
+
+```yaml
+add_grow_note:
+  alias: Add Grow Note
+  sequence:
+    - service: small_grow_tent_controller.add_note
+      data:
+        text: "{{ states('input_text.grow_note_input') }}"
+```
 
 ---
 

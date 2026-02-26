@@ -738,9 +738,7 @@ views:
                     fill_container: false
                     tap_action:
                       action: call-service
-                      service: small_grow_tent_controller.add_note
-                      service_data:
-                        text: '{{ states(''input_text.grow_note_input'') }}'
+                      service: script.add_grow_note
               - type: markdown
                 content: >
                   {% set notes =
