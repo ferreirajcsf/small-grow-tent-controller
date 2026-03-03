@@ -895,15 +895,22 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ctx = await self._apply_forced_modes(ctx)
 
         # --- Circulation Auto ---
-        # If circ_eid is still set (i.e. mode is Auto), use atomic helpers to
-        # enforce the correct state every cycle — same pattern as all other devices.
+        # If circ_eid is still set (i.e. mode is Auto), manage circulation based
+        # on the light schedule: on during the day window, off at night and during
+        # drying — matching the same day/night awareness as other devices.
         if ctx.circ_eid:
-            if enabled:
-                ctx.data["debug_circulation_reason"] = "auto:on"
-                await self._circ_on(ctx, "auto: controller enabled")
-            else:
-                ctx.data["debug_circulation_reason"] = "auto:off"
+            if not enabled:
+                ctx.data["debug_circulation_reason"] = "auto:off (controller disabled)"
                 await self._circ_off(ctx, "auto: controller disabled")
+            elif ctx.drying:
+                ctx.data["debug_circulation_reason"] = "auto:off (drying)"
+                await self._circ_off(ctx, "auto: drying mode")
+            elif ctx.is_day:
+                ctx.data["debug_circulation_reason"] = "auto:on (day window)"
+                await self._circ_on(ctx, "auto: day window")
+            else:
+                ctx.data["debug_circulation_reason"] = "auto:off (night window)"
+                await self._circ_off(ctx, "auto: night window")
 
         # Check sensors before proceeding
         sensors_ok = (

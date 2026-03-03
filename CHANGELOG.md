@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.32] - 2026-03-03
+
+### Fixed
+
+- **Circulation fan no longer forced on in Auto mode** — previously, when the circulation fan mode was set to "Auto", the controller unconditionally turned it on whenever the controller was enabled. The circulation fan now follows the same day/night schedule as the light: it turns on during the configured light-on window and turns off during the night window, during drying mode, and whenever the controller is disabled. Manual On/Off overrides continue to work as before.
+
+---
+
 ## [0.1.31] - 2026-02-26
 
 ### Fixed
