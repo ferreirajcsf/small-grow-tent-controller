@@ -4,7 +4,7 @@
 
 ### Fixed
 
-- **Circulation fan no longer forced on in Auto mode** — previously, when the circulation fan mode was set to "Auto", the controller unconditionally turned it on whenever the controller was enabled. The circulation fan now follows the same day/night schedule as the light: it turns on during the configured light-on window and turns off during the night window, during drying mode, and whenever the controller is disabled. Manual On/Off overrides continue to work as before.
+- **Circulation fan Auto mode now correctly handles drying and disabled states** — previously, when the circulation fan mode was set to "Auto", it would stay on even during drying mode and when the controller was disabled. It now turns off in both of those cases. During normal operation (day and night) it remains on continuously, which is beneficial for temperature equalisation, boundary-layer disruption, and mould prevention. Manual On/Off overrides continue to work as before.
 
 ---
 
