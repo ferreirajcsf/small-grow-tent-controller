@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.33] - 2026-03-12
+
+### Fixed
+
+- **Heater safety shutoff when sensors become unavailable** — previously, if the temperature/humidity sensors dropped out while the heater was running, the controller would enter `waiting_for_sensors` mode and return early every poll cycle, leaving the heater on indefinitely with no feedback. The tent could overheat without any intervention until sensors recovered or the user noticed manually.
+
+  The controller now immediately turns the heater off (blocking call) the moment sensors become unavailable, and logs a warning. The heater will resume normal automatic control once all sensors report valid readings again.
+
+---
+
 ## [0.1.32] - 2026-03-03
 
 ### Fixed

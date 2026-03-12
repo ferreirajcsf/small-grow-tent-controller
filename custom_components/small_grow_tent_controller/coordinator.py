@@ -920,6 +920,19 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._handle_sensor_availability(sensors_ok)
         if not sensors_ok:
             data["control_mode"] = "waiting_for_sensors"
+            # Safety: if sensors just became unavailable and the heater is on,
+            # turn it off immediately. Leaving it running with no sensor feedback
+            # is a fire/heat risk — it's far safer to turn it off and let the
+            # user or the controller restart it once sensors recover.
+            if heater_eid and heater_on_actual:
+                await self._async_switch(heater_eid, False, blocking=True)
+                self.control.last_heater_change = now
+                self.control.heater_on_since = None
+                self._record_action("Heater OFF · sensors unavailable safety shutoff")
+                _LOGGER.warning(
+                    "%s: heater turned off — sensors unavailable (safety shutoff)",
+                    self.entry.title,
+                )
             return data
 
         # Heater safety before anything else
