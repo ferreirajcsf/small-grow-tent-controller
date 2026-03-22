@@ -19,6 +19,9 @@ from .const import (
     CONF_USE_HEATER,
     CONF_USE_HUMIDIFIER,
     CONF_USE_DEHUMIDIFIER,
+    CONF_NIGHT_MODE,
+    NIGHT_MODE_DEW,
+    NIGHT_MODE_OPTIONS,
 )
 
 MODE_OPTIONS = ["Auto", "On", "Off"]
@@ -50,7 +53,7 @@ MODE_DEFS: list[_ModeDef] = [
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ):
-    entities: list[SelectEntity] = [StageSelect(entry)]
+    entities: list[SelectEntity] = [StageSelect(entry), NightModeSelect(entry)]
     for d in MODE_DEFS:
         if bool(_opt(entry, d.enable_conf, True)):
             entities.append(DeviceModeSelect(entry, d.key, d.name))
@@ -111,6 +114,36 @@ class DeviceModeSelect(SelectEntity, RestoreEntity):
 
     async def async_select_option(self, option: str):
         if option not in MODE_OPTIONS:
+            return
+        self._current = option
+        self.async_write_ha_state()
+
+class NightModeSelect(SelectEntity, RestoreEntity):
+    """Night-time control strategy: Dew Protection (classic) or VPD Chase."""
+
+    _attr_has_entity_name = True
+    _attr_options         = NIGHT_MODE_OPTIONS
+    _attr_icon            = "mdi:weather-night"
+
+    def __init__(self, entry: ConfigEntry):
+        self.entry = entry
+        self._attr_unique_id   = f"{entry.entry_id}_{CONF_NIGHT_MODE}"
+        self._attr_name        = "Night Mode"
+        self._attr_device_info = device_info_for_entry(entry)
+        self._current          = NIGHT_MODE_DEW  # default: existing behaviour
+
+    async def async_added_to_hass(self):
+        last = await self.async_get_last_state()
+        if last and last.state in NIGHT_MODE_OPTIONS:
+            self._current = last.state
+        self.async_write_ha_state()
+
+    @property
+    def current_option(self):
+        return self._current
+
+    async def async_select_option(self, option: str):
+        if option not in NIGHT_MODE_OPTIONS:
             return
         self._current = option
         self.async_write_ha_state()

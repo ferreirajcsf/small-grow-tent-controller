@@ -16,6 +16,8 @@ from .const import (
     DOMAIN,
     DEFAULT_STAGE,
     STAGE_TARGET_VPD_KPA,
+    CONF_NIGHT_MODE,
+    NIGHT_MODE_VPD,
     STAGE_TARGET_TEMP_C,
     STAGE_TARGET_RH,
     CONF_LIGHT_SWITCH,
@@ -127,6 +129,7 @@ class _Ctx:
     exhaust_safety_max_temp: float
     exhaust_safety_max_rh:   float
     heater_max_run_s:   float
+    night_mode:         str
 
 
 class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -498,6 +501,54 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ctx.heater_on = False
 
     # ------------------------------------------------------------------ #
+    #  Night VPD Chase mode                                                #
+    # ------------------------------------------------------------------ #
+
+    async def _apply_night_vpd_chase(self, ctx: _Ctx) -> None:
+        """VPD chase at night with a dew-point floor.
+
+        Runs the standard day VPD chase logic, then enforces a hard dew-point
+        floor: if the chase would leave the heater off but the tent temperature
+        is at or below dew + margin, the heater is turned on to prevent
+        condensation regardless of what VPD chase decided.
+
+        The stage night exhaust profile (on / auto) is also still applied so
+        that exhaust behaviour at night is consistent with the dew-protection
+        mode and the user's per-stage configuration.
+        """
+        profile      = STAGE_NIGHT_PROFILE.get(ctx.stage, {"exhaust_mode": "on", "dew_margin_add_c": 0.0})
+        exhaust_mode = profile.get("exhaust_mode", "on")
+        dew_margin_night = ctx.dew_margin + float(profile.get("dew_margin_add_c", 0.0))
+        dew_floor = ctx.dew + dew_margin_night
+
+        ctx.data["control_mode"] = "night_vpd_chase"
+
+        # Run standard VPD chase (handles heater, exhaust, humidifier, dehumidifier)
+        await self._apply_vpd_chase(ctx)
+
+        # Dew-point floor: override heater if VPD chase left it off but we are
+        # too close to (or below) the dew point.
+        if not ctx.heater_on and ctx.avg_temp <= dew_floor:
+            ctx.data["debug_heater_reason"] = (
+                f"night_vpd_chase: dew floor override "
+                f"(avg={ctx.avg_temp:.1f}°C <= floor={dew_floor:.1f}°C)"
+            )
+            await self._heater_on_if_allowed(
+                ctx, f"night VPD chase: dew floor {dew_floor:.1f}°C"
+            )
+
+        # Apply stage exhaust night profile on top of VPD chase exhaust decision
+        if exhaust_mode == "on":
+            ctx.data["debug_exhaust_reason"] = (
+                ctx.data.get("debug_exhaust_reason", "") + " [night profile: force_on]"
+            )
+            await self._exhaust_on_if_off(ctx, "night VPD chase: profile=on")
+        elif exhaust_mode == "auto":
+            want = ctx.avg_rh > ctx.max_rh or ctx.avg_temp > ctx.max_temp
+            if not want:
+                await self._exhaust_off_if_on(ctx, "night VPD chase: profile=auto, conditions_ok")
+
+        # ------------------------------------------------------------------ #
     #  Day hard limits                                                     #
     # ------------------------------------------------------------------ #
 
@@ -888,6 +939,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             exhaust_safety_max_temp = float(data.get("exhaust_safety_max_temp_c", 30.0)),
             exhaust_safety_max_rh   = float(data.get("exhaust_safety_max_rh",     75.0)),
             heater_max_run_s   = float(data.get("heater_max_run_s", 0.0) or 0.0),
+            night_mode         = data.get("night_mode", "Dew Protection"),
         )
 
         # Apply forced On/Off overrides (handles On/Off modes for all devices
@@ -944,7 +996,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if drying:
             await self._apply_drying_mode(ctx)
         elif not is_day:
-            await self._apply_night_mode(ctx)
+            if ctx.night_mode == NIGHT_MODE_VPD:
+                await self._apply_night_vpd_chase(ctx)
+            else:
+                await self._apply_night_mode(ctx)
         else:
             hard_limit_active = await self._apply_day_hard_limits(ctx)
             if not hard_limit_active:
@@ -1035,6 +1090,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "target_rh":          self._num(_eid("target_rh"),          55.0),
             "vpd_deadband_kpa":   self._num(_eid("vpd_deadband_kpa"),   0.07),
             "vpd_chase_enabled":  (self._get_entity_state(_eid("vpd_chase_enabled", "switch")) != "off"),
+            "night_mode":         self._get_entity_state(_eid(CONF_NIGHT_MODE, "select")) or "Dew Protection",
             "dewpoint_margin_c":  self._num(_eid("dewpoint_margin_c"),  1.0),
             "heater_hold_s":      self._num(_eid("heater_hold_s"),      60.0),
             "exhaust_hold_s":     self._num(_eid("exhaust_hold_s"),     45.0),

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.34] - 2026-03-22
+
+### Added
+
+- **Night Mode select** — a new dropdown in the Tuning/Safety section lets you choose how the controller behaves during the night (light-off) window:
+
+  - **Dew Protection** *(default — existing behaviour unchanged)* — heater pulses proportionally to keep temperature above dew point + margin. Humidifier is forced off. Dehumidifier runs if RH is above the max limit. Exhaust follows the per-stage night profile (on/auto).
+  - **VPD Chase** — runs the same VPD chase logic as daytime (heater, exhaust, humidifier, dehumidifier all work toward VPD/temp/RH targets). A dew-point floor is always enforced: if VPD chase would leave the heater off but temperature is at or below dew + margin, the heater is turned on regardless. The per-stage exhaust night profile is also still applied on top of the VPD chase exhaust decision.
+
+  Switching to Dew Protection at any time restores the original night behaviour with no other changes required.
+
+---
+
 ## [0.1.33] - 2026-03-12
 
 ### Fixed
