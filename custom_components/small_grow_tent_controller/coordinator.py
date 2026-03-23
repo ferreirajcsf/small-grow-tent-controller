@@ -1016,7 +1016,13 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._apply_drying_mode(ctx)
         elif not is_day:
             if ctx.night_mode in (NIGHT_MODE_VPD, NIGHT_MODE_VPD_NO_HEATER):
-                await self._apply_night_vpd_chase(ctx)
+                # Hard limits take priority over night VPD chase, same as day mode.
+                # Without this check, a breach of max RH or max temp at night
+                # would be ignored — VPD chase would continue trying to chase
+                # its target regardless of safety limits being exceeded.
+                hard_limit_active = await self._apply_day_hard_limits(ctx)
+                if not hard_limit_active:
+                    await self._apply_night_vpd_chase(ctx)
             else:
                 await self._apply_night_mode(ctx)
         else:

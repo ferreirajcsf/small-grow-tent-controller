@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.37] - 2026-03-23
+
+### Fixed
+
+- **Hard limits now enforced before Night VPD Chase** — previously, when Night Mode was set to VPD Chase or VPD Chase (No Heater), the hard temperature and humidity limits were never checked at night. If RH exceeded the max limit, the controller would ignore it and continue trying to chase the VPD target — which in the case of low VPD + high RH could mean turning the heater on and exhaust off, making the RH problem worse.
+
+  Hard limits now run before night VPD chase with the same priority they have during the day. If a limit is breached, the hard limit response fires and VPD chase is skipped for that cycle.
+
+---
+
 ## [0.1.36] - 2026-03-23
 
 ### Changed
