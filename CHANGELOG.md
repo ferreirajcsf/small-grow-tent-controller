@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.36] - 2026-03-23
+
+### Changed
+
+- **Night Mode: "VPD Chase (No Heater)" replaces Heater Mode "Night Off"** — the option to exclude the heater from VPD chasing at night has been moved from the Heater Mode device dropdown into the Night Mode selector in Tuning/Safety, where it logically belongs. The Heater Mode dropdown reverts to its original three options (`Auto`, `On`, `Off`).
+
+  The Night Mode selector now has three options:
+
+  | Option | Behaviour |
+  |---|---|
+  | **Dew Protection** | Unchanged — heater pulses to dew + margin, humidifier off, exhaust follows stage profile |
+  | **VPD Chase** | Full VPD chase at night + dew-point floor + stage exhaust profile |
+  | **VPD Chase (No Heater)** | Same as VPD Chase but heater excluded from chasing VPD; dew-point protection still fires unconditionally |
+
+### Fixed
+
+- Heater Mode dropdown no longer shows a `Night Off` option that had no effect in most modes and caused confusion.
+
+---
+
 ## [0.1.35] - 2026-03-23
 
 ### Added

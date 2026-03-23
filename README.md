@@ -62,11 +62,12 @@ During the lights-off window the controller can operate in one of two modes, sel
 | Mode | Behaviour |
 |---|---|
 | **Dew Protection** *(default)* | Heater pulses to stay above dew point + margin. Humidifier off. Dehumidifier if RH too high. Exhaust follows stage night profile. |
-| **VPD Chase** | Full VPD chase logic runs at night (heater, exhaust, humidifier, dehumidifier all work toward targets). Dew-point protection always active as a hard floor. Stage exhaust night profile still applied. |
+| **VPD Chase** | Full VPD chase logic runs at night. Dew-point protection always active as a hard floor. Stage exhaust night profile still applied. |
+| **VPD Chase (No Heater)** | Same as VPD Chase but heater is excluded from chasing VPD. Dew-point protection still fires unconditionally. |
 
-**Heater Night Off**
+**VPD Chase (No Heater)**
 
-The Heater Mode dropdown includes a `Night Off` option. When selected and Night Mode is set to VPD Chase, the heater is excluded from VPD chasing at night — but dew-point protection still fires unconditionally if temperature drops to dew point + margin. Behaves identically to `Auto` in all other modes.
+The Night Mode selector includes a `VPD Chase (No Heater)` option. This runs the same VPD chase logic as the standard VPD Chase night mode, but the heater is excluded from chasing VPD — only humidity control and the exhaust fan work toward the VPD target. Dew-point protection still fires unconditionally if temperature drops to dew point + margin.
 
 **Grow Journal**
 - Built-in timestamped grow log — record observations, training events, nutrient changes, anything
@@ -90,7 +91,6 @@ Each device has a mode selector with the following options:
 | **Auto** | Controller manages the device automatically |
 | **On** | Device forced on every cycle, regardless of conditions |
 | **Off** | Device forced off every cycle, regardless of conditions |
-| **Night Off** *(heater only)* | Heater excluded from VPD chasing at night; dew-point protection still active |
 
 Use the **Return All Devices to Auto** button to hand everything back to the controller in one tap. Overrides are enforced every poll cycle, so the controller will correct any unexpected state change within ~10 seconds.
 
@@ -217,7 +217,7 @@ Full VPD chase logic runs at night — the controller uses all available devices
 - **Dew-point floor** — if VPD chase leaves the heater off but temperature is at or below dew point + margin, the heater turns on regardless.
 - **Stage exhaust night profile** — the per-stage exhaust setting is still applied.
 
-If **Heater Mode** is set to `Night Off` and Night Mode is VPD Chase, the heater is excluded from VPD chasing but the dew-point floor still fires unconditionally.
+If **Night Mode** is set to `VPD Chase (No Heater)`, the heater is excluded from VPD chasing but the dew-point floor still fires unconditionally.
 
 ### 7. Day mode — hard limits
 During the lights-on period, if temperature or humidity breach their min/max limits, the controller acts immediately:

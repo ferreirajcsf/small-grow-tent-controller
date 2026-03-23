@@ -92,10 +92,11 @@ CONF_EXHAUST_SAFETY_MAX_RH    = "exhaust_safety_max_rh"
 CONF_VPD_CHASE_ENABLED = "vpd_chase_enabled"
 
 # Night mode select options
-CONF_NIGHT_MODE        = "night_mode"
-NIGHT_MODE_DEW         = "Dew Protection"   # classic pulse-to-dew behaviour
-NIGHT_MODE_VPD         = "VPD Chase"         # full VPD chase + dew floor
-NIGHT_MODE_OPTIONS     = [NIGHT_MODE_DEW, NIGHT_MODE_VPD]
+CONF_NIGHT_MODE          = "night_mode"
+NIGHT_MODE_DEW           = "Dew Protection"        # classic pulse-to-dew behaviour
+NIGHT_MODE_VPD           = "VPD Chase"              # full VPD chase + dew floor
+NIGHT_MODE_VPD_NO_HEATER = "VPD Chase (No Heater)" # VPD chase + dew floor, heater excluded from chasing
+NIGHT_MODE_OPTIONS       = [NIGHT_MODE_DEW, NIGHT_MODE_VPD, NIGHT_MODE_VPD_NO_HEATER]
 
 # Night VPD Chase switch unique-id suffix
 CONF_NIGHT_VPD_CHASE = "night_vpd_chase"

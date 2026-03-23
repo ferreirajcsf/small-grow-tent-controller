@@ -18,6 +18,7 @@ from .const import (
     STAGE_TARGET_VPD_KPA,
     CONF_NIGHT_MODE,
     NIGHT_MODE_VPD,
+    NIGHT_MODE_VPD_NO_HEATER,
     STAGE_TARGET_TEMP_C,
     STAGE_TARGET_RH,
     CONF_LIGHT_SWITCH,
@@ -168,7 +169,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         st  = self.hass.states.get(eid)
         if st is None:
             return "Auto"
-        return st.state if st.state in ("Auto", "On", "Off", "Night Off") else "Auto"
+        return st.state if st.state in ("Auto", "On", "Off") else "Auto"
 
     def _now(self) -> datetime:
         return dt_util.now()
@@ -310,7 +311,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ]:
             eid  = getattr(ctx, eid_attr)
             mode = self._get_mode(mode_key) if eid else "Auto"
-            if mode in ("Auto", "Night Off") or not eid:
+            if mode == "Auto" or not eid:
                 continue
             desired = mode == "On"
             cur = self._switch_is_on(eid)
@@ -527,14 +528,13 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         ctx.data["control_mode"] = "night_vpd_chase"
 
-        # "Night Off" heater mode: suppress heater from VPD chase but keep the
-        # eid aside so the dew floor check can still use it.
-        heater_mode_night = self._get_mode("heater_mode")
-        night_heater_suppressed = (heater_mode_night == "Night Off")
+        # "VPD Chase (No Heater)" night mode: suppress heater from VPD chase
+        # but keep the eid aside so the dew floor check can still use it.
+        night_heater_suppressed = (ctx.night_mode == NIGHT_MODE_VPD_NO_HEATER)
         saved_heater_eid = ctx.heater_eid
         if night_heater_suppressed:
             ctx.heater_eid = None
-            ctx.data["debug_heater_reason"] = "night_vpd_chase: Night Off — heater suppressed for VPD chase"
+            ctx.data["debug_heater_reason"] = "night_vpd_chase: VPD Chase (No Heater) — heater suppressed for VPD chase"
 
         # Run standard VPD chase (handles heater, exhaust, humidifier, dehumidifier)
         await self._apply_vpd_chase(ctx)
@@ -890,7 +890,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if not eid:
                     continue
                 mode = self._get_mode(mode_key)
-                if mode in ("Auto", "Night Off"):
+                if mode == "Auto":
                     continue
                 desired = mode == "On"
                 if label == "Exhaust" and mode == "Off":
@@ -1015,7 +1015,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if drying:
             await self._apply_drying_mode(ctx)
         elif not is_day:
-            if ctx.night_mode == NIGHT_MODE_VPD:
+            if ctx.night_mode in (NIGHT_MODE_VPD, NIGHT_MODE_VPD_NO_HEATER):
                 await self._apply_night_vpd_chase(ctx)
             else:
                 await self._apply_night_mode(ctx)

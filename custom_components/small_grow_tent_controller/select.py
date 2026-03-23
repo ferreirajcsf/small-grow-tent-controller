@@ -22,9 +22,10 @@ from .const import (
     CONF_NIGHT_MODE,
     NIGHT_MODE_DEW,
     NIGHT_MODE_OPTIONS,
+    NIGHT_MODE_VPD_NO_HEATER,
 )
 
-MODE_OPTIONS = ["Auto", "On", "Off", "Night Off"]
+MODE_OPTIONS = ["Auto", "On", "Off"]
 
 
 def _opt(entry: ConfigEntry, key: str, default):
