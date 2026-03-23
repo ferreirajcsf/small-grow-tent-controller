@@ -24,7 +24,7 @@ from .const import (
     NIGHT_MODE_OPTIONS,
 )
 
-MODE_OPTIONS = ["Auto", "On", "Off"]
+MODE_OPTIONS = ["Auto", "On", "Off", "Night Off"]
 
 
 def _opt(entry: ConfigEntry, key: str, default):

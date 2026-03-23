@@ -67,6 +67,7 @@ views:
                         'night_on_dewpoint_protect':'Night: Dew (ON)',
                         'night_auto_dewpoint_protect':'Night: Dew (AUTO)',
                         'night_vpd_chase':'Night: VPD Chase',
+                        'night_vpd_chase_dew_floor':'Night: VPD Chase (dew floor)',
                         'hard_limit:temp_below_min':'Limit: Temp low','hard_limit:temp_above_max':'Limit: Temp high',
                         'hard_limit:rh_below_min':'Limit: RH low','hard_limit:rh_above_max':'Limit: RH high',
                         'drying_hard_limit:temp_below_min':'Dry: Temp low','drying_hard_limit:temp_above_max':'Dry: Temp high',

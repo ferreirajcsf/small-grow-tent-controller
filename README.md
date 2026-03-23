@@ -34,26 +34,39 @@ All devices are optional — only enable what you actually have:
 | Device | What it controls |
 |---|---|
 | 🔆 Light | On/off by schedule |
-| 💨 Circulation fan | On whenever the controller is active (Auto), or manually forced On/Off |
+| 💨 Circulation fan | On whenever controller is active (day and night), off during drying and when controller is disabled |
 | 🌬️ Exhaust fan | Temperature, humidity, and VPD management |
-| 🔥 Heater | Temperature and night-time dew-point protection |
+| 🔥 Heater | Temperature and dew-point protection |
 | 💧 Humidifier | VPD and humidity management |
 | 🧊 Dehumidifier | VPD and humidity management |
 
 **Growth stage presets**
 
-Switch between stages and the controller automatically adjusts its VPD targets:
+Switch between stages and the controller automatically adjusts its VPD, temperature, and humidity targets:
 
-| Stage | Default VPD | Adjustable? |
-|---|---|---|
-| Seedling | 0.70 kPa | ✅ Yes |
-| Early Vegetative | 0.95 kPa | ✅ Yes |
-| Late Vegetative | 1.10 kPa | ✅ Yes |
-| Early Bloom | 1.25 kPa | ✅ Yes |
-| Late Bloom | 1.45 kPa | ✅ Yes |
-| Drying | 0.90 kPa | ✅ Yes |
+| Stage | Default VPD | Default Temp | Default RH | Adjustable? |
+|---|---|---|---|---|
+| Seedling | 0.70 kPa | 24°C | 70% | ✅ Yes |
+| Early Vegetative | 0.95 kPa | 25°C | 60% | ✅ Yes |
+| Late Vegetative | 1.10 kPa | 26°C | 55% | ✅ Yes |
+| Early Bloom | 1.25 kPa | 26°C | 50% | ✅ Yes |
+| Late Bloom | 1.45 kPa | 25°C | 45% | ✅ Yes |
+| Drying | 0.90 kPa | 21°C | 55% | ✅ Yes |
 
-The **VPD Target** slider lets you nudge the target for the current stage at any time. When you switch stage, it resets to that stage's default automatically (~10 second delay).
+All three target values (VPD, temperature, RH) reset to their stage defaults when you change stage (~10 second delay). Each can be nudged freely at any time.
+
+**Night mode options**
+
+During the lights-off window the controller can operate in one of two modes, selectable from the Tuning/Safety section:
+
+| Mode | Behaviour |
+|---|---|
+| **Dew Protection** *(default)* | Heater pulses to stay above dew point + margin. Humidifier off. Dehumidifier if RH too high. Exhaust follows stage night profile. |
+| **VPD Chase** | Full VPD chase logic runs at night (heater, exhaust, humidifier, dehumidifier all work toward targets). Dew-point protection always active as a hard floor. Stage exhaust night profile still applied. |
+
+**Heater Night Off**
+
+The Heater Mode dropdown includes a `Night Off` option. When selected and Night Mode is set to VPD Chase, the heater is excluded from VPD chasing at night — but dew-point protection still fires unconditionally if temperature drops to dew point + margin. Behaves identically to `Auto` in all other modes.
 
 **Grow Journal**
 - Built-in timestamped grow log — record observations, training events, nutrient changes, anything
@@ -62,22 +75,32 @@ The **VPD Target** slider lets you nudge the target for the current stage at any
 - Accessible via the `small_grow_tent_controller.add_note` service for automations
 
 **Safety features**
-- Configurable heater max run time with automatic lockout
+- **Heater safety shutoff on sensor dropout** — if sensors become unavailable while the heater is running, it is immediately turned off (blocking call) to prevent uncontrolled overheating. Normal control resumes automatically when sensors recover.
+- **Heater max run time** — configurable safety cutoff with automatic lockout if the heater runs continuously too long (0 = disabled)
 - **Exhaust safety** — when enabled, the exhaust fan cannot be turned off by *any* part of the control logic (including hard limits, night mode, VPD chase, or manual Off override) while temperature or humidity exceed the configured safety thresholds. This is a true system-wide safety, not just a manual-override guard.
 - Anti-cycling protection via configurable hold times (prevents rapid on/off switching)
 - Controller can be fully disabled while keeping manual device overrides active
 
 **Per-device manual overrides**
 
-Each device has an Auto / On / Off mode selector. Set any device to On or Off to override the controller for that device, or use the "Return All Devices to Auto" button to hand everything back to the controller in one tap. Overrides are enforced every poll cycle, so the controller will correct any unexpected state change within ~10 seconds.
+Each device has a mode selector with the following options:
+
+| Option | Behaviour |
+|---|---|
+| **Auto** | Controller manages the device automatically |
+| **On** | Device forced on every cycle, regardless of conditions |
+| **Off** | Device forced off every cycle, regardless of conditions |
+| **Night Off** *(heater only)* | Heater excluded from VPD chasing at night; dew-point protection still active |
+
+Use the **Return All Devices to Auto** button to hand everything back to the controller in one tap. Overrides are enforced every poll cycle, so the controller will correct any unexpected state change within ~10 seconds.
 
 **Entities created automatically**
 
 Once set up, the integration creates a full set of entities grouped under a single device in your HA UI:
-- Sensors for average temperature, humidity, VPD, dew point, leaf temperature, and control mode
-- Switches for the controller itself, VPD Chase, and exhaust safety override
-- Number sliders for all limits, deadbands, and hold times
-- Select entities for growth stage and per-device modes
+- Sensors for average temperature, humidity, VPD, dew point, leaf temperature, control mode, and last action
+- Switches for the controller, VPD Chase, and exhaust safety override
+- Number sliders for all limits, targets, deadbands, and hold times
+- Select entities for growth stage, night mode, and per-device modes
 - Time helpers for your light on/off schedule
 - A button to reset all devices to Auto
 
@@ -138,21 +161,22 @@ Once the integration is running, tune it from the entity controls in your dashbo
 
 | Setting | What it does |
 |---|---|
-| **Stage** | Sets the active growth stage and resets the VPD Target to its default |
+| **Stage** | Sets the active growth stage and resets VPD, temperature, and RH targets to stage defaults |
 | **VPD Target** | Target VPD for the current stage — adjustable per stage, resets on stage change |
-| **VPD Chase** | When ON (default), actively chases VPD. When OFF, only hard limits are enforced |
 | **Target Temperature** | The temperature the controller chases during VPD chase mode |
 | **Target Humidity** | The humidity the controller nudges toward when VPD is in band |
+| **VPD Chase** | When ON (default), actively chases VPD. When OFF, only hard limits are enforced |
+| **Night Mode** | Controls night-time strategy: Dew Protection (default) or VPD Chase |
 | **Min / Max Temperature** | Hard limits — heater or exhaust kicks in if breached |
 | **Min / Max Humidity** | Hard limits for RH |
 | **VPD Deadband** | How far VPD can drift before the controller acts (default 0.07 kPa) |
 | **Dew Point Margin** | How many °C above dew point the heater targets at night (default 1.0°C) |
 | **Light On / Off Time** | Your light schedule — the controller follows this for day/night logic |
 | **Hold Times** | Minimum time between switching each device (prevents rapid cycling) |
+| **Heater Max Run Time** | Safety cutoff — heater is forced off and locked out if it runs continuously too long (0 = disabled) |
+| **Exhaust Safety Override** | When ON, prevents the exhaust from turning off above the safety thresholds, regardless of what triggered the turn-off |
+| **Exhaust Safety Max Temperature / Humidity** | The thresholds used by the exhaust safety |
 | **Grow Journal** | Use the dashboard text field to add dated notes; or call `small_grow_tent_controller.add_note` from an automation |
-| **Heater Max Run Time** | Safety cutoff — heater is forced off and locked out if it runs too long (0 = disabled) |
-| **Exhaust Safety Override** | When ON, prevents the exhaust from turning off above the safety thresholds (temp or RH), regardless of what triggered the turn-off |
-| **Exhaust Safety Max Temperature / Humidity** | The thresholds used by the exhaust safety — exhaust stays on if either is exceeded |
 
 ---
 
@@ -171,22 +195,31 @@ If the controller switch is off, automatic control stops. Manual overrides (On/O
 ### 3. Drying mode
 When the stage is set to **Drying**, lights are always off and the controller enforces only hard temperature and humidity limits — no VPD chasing.
 
-### 4. Heater safety trip
+### 4. Sensor safety shutoff
+If sensors become unavailable mid-cycle and the heater is currently on, it is immediately turned off as a safety measure. The controller enters `waiting_for_sensors` mode and takes no further action until all sensors report valid readings again.
+
+### 5. Heater safety trip
 If the heater has been running continuously longer than **Heater Max Run Time**, it is immediately forced off and locked out for the heater hold period before it can turn on again.
 
-### 5. Night mode (lights off window)
-During the lights-off period the controller switches to **dew-point protection** mode. The heater runs in soft pulses to keep the air temperature above `dew point + margin`, preventing condensation on your plants. The exhaust fan behaviour at night depends on the stage:
+### 6. Night mode (lights-off window)
+During the lights-off period the controller switches to one of two night strategies depending on the **Night Mode** setting:
+
+**Dew Protection** *(default)*
+The heater runs in soft pulses to keep air temperature above `dew point + margin`, preventing condensation. Humidifier is forced off. Dehumidifier runs if RH exceeds max. Exhaust follows the per-stage night profile:
 
 | Stage | Night exhaust behaviour |
 |---|---|
-| Seedling | Auto — runs only if needed for dew-point protection |
-| Early Vegetative | Auto — runs only if needed for dew-point protection |
-| Late Vegetative | Auto — runs only if needed for dew-point protection |
-| Early Bloom | Auto — runs only if needed for dew-point protection |
-| Late Bloom | Auto — runs only if needed for dew-point protection |
+| Seedling → Late Bloom | Auto — runs only if temp or RH exceeds limits |
 | Drying | On continuously |
 
-### 6. Day mode — hard limits
+**VPD Chase**
+Full VPD chase logic runs at night — the controller uses all available devices to work toward the VPD, temperature, and RH targets. Two behaviours are always enforced on top:
+- **Dew-point floor** — if VPD chase leaves the heater off but temperature is at or below dew point + margin, the heater turns on regardless.
+- **Stage exhaust night profile** — the per-stage exhaust setting is still applied.
+
+If **Heater Mode** is set to `Night Off` and Night Mode is VPD Chase, the heater is excluded from VPD chasing but the dew-point floor still fires unconditionally.
+
+### 7. Day mode — hard limits
 During the lights-on period, if temperature or humidity breach their min/max limits, the controller acts immediately:
 
 | Condition | Response |
@@ -198,7 +231,7 @@ During the lights-on period, if temperature or humidity breach their min/max lim
 
 If the **Exhaust Safety** is enabled and its thresholds are exceeded, any attempt to turn the exhaust off (including from a hard limit like `temp_below_min`) is silently blocked — the fan stays on and the reason is logged with a `[SAFETY: blocked_off]` suffix.
 
-### 7. Day mode — VPD chase
+### 8. Day mode — VPD chase
 When everything is within limits and the **VPD Chase** switch is ON, the controller fine-tunes conditions by chasing the stage's VPD target within the configured deadband, using the heater, exhaust, humidifier, and dehumidifier as needed.
 
 When VPD Chase is OFF, the controller operates in **limits-only mode**: devices are left neutral as long as temp and RH stay within their min/max limits. Useful for simpler thermostat/humidistat style control.
@@ -209,7 +242,7 @@ When VPD Chase is OFF, the controller operates in **limits-only mode**: devices 
 
 ![Dashboard Screenshot](images/dashboard_screenshot.png)
 
-An example Lovelace dashboard is included in the `Examples/` folder. It is structured across four views — Status, Targets, Devices, and Debug — so the most-used information is always front and centre.
+An example Lovelace dashboard is included in the `Examples/` folder.
 
 **Required custom cards** (install via HACS):
 - [layout-card](https://github.com/thomasloven/lovelace-layout-card)
@@ -242,7 +275,10 @@ add_grow_note:
 Make sure you restarted Home Assistant after installation. Check **Settings → System → Logs** for any errors from `small_grow_tent_controller`.
 
 **Controller is stuck on `waiting_for_sensors`**
-One or more of your sensor entities is unavailable or returning a non-numeric value. Check that all four sensor entity IDs in the integration config are correct and reporting valid readings.
+One or more of your sensor entities is unavailable or returning a non-numeric value. Check that all four sensor entity IDs in the integration config are correct and reporting valid readings. A persistent notification is also shown on the dashboard when this happens.
+
+**Heater turned off unexpectedly**
+If sensors became unavailable while the heater was running, it will have been turned off automatically as a safety measure. Check the `last_action` sensor — if it shows `Heater OFF · sensors unavailable safety shutoff`, that's why. The heater will resume normal control once sensors recover.
 
 **Devices are not switching**
 Make sure the entity IDs you assigned in the config are `switch.*` entities and that Home Assistant can control them (test with a manual toggle from the HA UI first).

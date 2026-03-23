@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.35] - 2026-03-23
+
+### Added
+
+- **Heater Mode: Night Off option** — the Heater Mode dropdown now includes a fourth option, `Night Off`, alongside the existing `Auto`, `On`, and `Off`.
+
+  When `Night Off` is selected and the Night Mode is set to **VPD Chase**:
+  - The heater is **excluded from VPD chasing** — it will not turn on or off in pursuit of the VPD target.
+  - **Dew-point protection still fires** — if temperature falls to dew point + margin, the heater turns on regardless. Condensation protection is never disabled.
+  - In all other modes (Dew Protection night, daytime, drying), `Night Off` behaves identically to `Auto` — the heater is used normally.
+
+  This is useful if you want humidity and exhaust to drive VPD at night without the heater cycling, while still having a safety net against condensation.
+
+---
+
 ## [0.1.34] - 2026-03-22
 
 ### Added
