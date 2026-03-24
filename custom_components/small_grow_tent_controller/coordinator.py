@@ -16,9 +16,14 @@ from .const import (
     DOMAIN,
     DEFAULT_STAGE,
     STAGE_TARGET_VPD_KPA,
+    STAGE_NIGHT_TARGET_TEMP_C,
+    STAGE_NIGHT_TARGET_VPD_KPA,
+    STAGE_NIGHT_TARGET_RH,
     CONF_NIGHT_MODE,
     NIGHT_MODE_VPD,
     NIGHT_MODE_VPD_NO_HEATER,
+    EXHAUST_MODE_DAY_ON,
+    EXHAUST_MODE_NIGHT_ON,
     STAGE_TARGET_TEMP_C,
     STAGE_TARGET_RH,
     CONF_LIGHT_SWITCH,
@@ -89,6 +94,11 @@ class ControlState:
     # Stage change detection (for VPD target auto-reset)
     last_stage: str = ""
 
+    # Day/night transition tracking for temperature ramp
+    last_is_day: bool | None = None
+    # Effective ramped temperature target (°C) — slides toward actual target at ramp rate
+    ramped_target_temp_c: float | None = None
+
     # Last action recorded by the controller
     last_action: str = "none"
 
@@ -131,6 +141,10 @@ class _Ctx:
     exhaust_safety_max_rh:   float
     heater_max_run_s:   float
     night_mode:         str
+    night_vpd_target:   float
+    night_target_temp:  float
+    night_target_rh:    float
+    temp_ramp_rate:     float
 
 
 class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -169,7 +183,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         st  = self.hass.states.get(eid)
         if st is None:
             return "Auto"
-        return st.state if st.state in ("Auto", "On", "Off") else "Auto"
+        return st.state if st.state in ("Auto", "On", "Off", "Day On", "Night On") else "Auto"
 
     def _now(self) -> datetime:
         return dt_util.now()
@@ -238,6 +252,25 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     def _heater_allowed_on(self, now: datetime) -> bool:
         return not (self.control.heater_max_lockout_until and now < self.control.heater_max_lockout_until)
+
+    # ------------------------------------------------------------------ #
+    #  Temperature ramp helper                                             #
+    # ------------------------------------------------------------------ #
+
+    def _apply_temp_ramp(self, effective_target: float, actual_target: float, ramp_rate: float) -> float:
+        """Slide effective_target toward actual_target at no more than ramp_rate °C/poll.
+
+        ramp_rate is in °C/min; the controller polls every 10 seconds so the
+        per-poll cap is ramp_rate * 10/60.  When ramp_rate is 0 the target
+        jumps immediately (ramp disabled).
+        """
+        if ramp_rate <= 0:
+            return actual_target
+        max_delta = ramp_rate * (10.0 / 60.0)   # °C per 10-second poll
+        delta = actual_target - effective_target
+        if abs(delta) <= max_delta:
+            return actual_target
+        return effective_target + (max_delta if delta > 0 else -max_delta)
 
     # ------------------------------------------------------------------ #
     #  Exhaust safety                                                      #
@@ -323,15 +356,23 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             setattr(ctx, on_attr, desired)
             setattr(ctx, eid_attr, None)
 
-        # Exhaust: special safety check
+        # Exhaust: special safety check + Day On / Night On schedule modes
         eid  = ctx.exhaust_eid
         mode = self._get_mode("exhaust_mode") if eid else "Auto"
         if mode != "Auto" and eid:
-            desired = mode == "On"
-            reason  = f"override:{mode.lower()}"
-            if mode == "Off" and self._exhaust_safety_blocks_off(ctx):
+            if mode == "Day On":
+                desired = ctx.is_day
+                reason  = f"override:day_on ({'day' if ctx.is_day else 'night'})"
+            elif mode == "Night On":
+                desired = not ctx.is_day
+                reason  = f"override:night_on ({'night' if not ctx.is_day else 'day'})"
+            else:
+                desired = mode == "On"
+                reason  = f"override:{mode.lower()}"
+            # Safety always overrides — exhaust cannot be turned off if safety blocks it
+            if not desired and self._exhaust_safety_blocks_off(ctx):
                 desired = True
-                reason  = "override:off_blocked_by_safety"
+                reason  += " [SAFETY: blocked_off]"
             ctx.data["debug_exhaust_reason"] = reason
             cur = self._switch_is_on(eid)
             if cur is not None and cur != desired:
@@ -607,9 +648,15 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     async def _apply_vpd_chase(self, ctx: _Ctx) -> None:
         ctx.data["control_mode"] = "vpd_chase"
-        target_vpd  = float(ctx.data.get("vpd_target_kpa",  STAGE_TARGET_VPD_KPA.get(ctx.stage, 1.00)))
-        target_temp = float(ctx.data.get("target_temp_c",   STAGE_TARGET_TEMP_C.get(ctx.stage, 25.0)))
-        target_rh   = float(ctx.data.get("target_rh",       STAGE_TARGET_RH.get(ctx.stage, 55.0)))
+        # Use night targets during night window, day targets during day
+        if ctx.is_day:
+            target_vpd  = float(ctx.data.get("vpd_target_kpa",  STAGE_TARGET_VPD_KPA.get(ctx.stage, 1.00)))
+            target_temp = float(ctx.data.get("target_temp_c",   STAGE_TARGET_TEMP_C.get(ctx.stage, 25.0)))
+            target_rh   = float(ctx.data.get("target_rh",       STAGE_TARGET_RH.get(ctx.stage, 55.0)))
+        else:
+            target_vpd  = ctx.night_vpd_target
+            target_temp = ctx.night_target_temp
+            target_rh   = ctx.night_target_rh
         deadband    = float(ctx.data.get("vpd_deadband_kpa", 0.07))
         temp_db     = 0.5   # °C deadband around target temp before acting
         rh_db       = 2.0   # % RH deadband around target RH before acting
@@ -959,7 +1006,41 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             exhaust_safety_max_rh   = float(data.get("exhaust_safety_max_rh",     75.0)),
             heater_max_run_s   = float(data.get("heater_max_run_s", 0.0) or 0.0),
             night_mode         = data.get("night_mode", "Dew Protection"),
+            night_vpd_target   = float(data.get("night_vpd_target_kpa", 1.00)),
+            night_target_temp  = float(data.get("night_target_temp_c",  20.0)),
+            night_target_rh    = float(data.get("night_target_rh",      55.0)),
+            temp_ramp_rate     = float(data.get("temp_ramp_rate_c_per_min", 1.0)),
         )
+
+        # --- Temperature ramp ---
+        # Slide the effective target temperatures toward their actual values at
+        # no more than temp_ramp_rate °C/min.  This prevents abrupt jumps at the
+        # day/night boundary and acts as a global protection against rapid
+        # temperature changes at any time.
+        ramp_rate = ctx.temp_ramp_rate
+
+        # Detect day/night transition — reset ramp tracking to actual temp on
+        # first poll and on each direction change to avoid a stale ramp base.
+        if self.control.last_is_day != ctx.is_day:
+            self.control.last_is_day = ctx.is_day
+            self.control.ramped_target_temp_c = ctx.avg_temp  # start ramp from current temp
+
+        # Determine the actual temperature target for this period
+        actual_target_temp = float(data.get("target_temp_c", 25.0)) if ctx.is_day else ctx.night_target_temp
+
+        # Slide effective target toward actual target at ramp rate
+        if self.control.ramped_target_temp_c is None:
+            self.control.ramped_target_temp_c = actual_target_temp
+        self.control.ramped_target_temp_c = self._apply_temp_ramp(
+            self.control.ramped_target_temp_c, actual_target_temp, ramp_rate
+        )
+
+        # Update ctx with ramped values so all sub-methods use them
+        if ctx.is_day:
+            data["target_temp_c"] = round(self.control.ramped_target_temp_c, 2)
+        else:
+            ctx.night_target_temp = round(self.control.ramped_target_temp_c, 2)
+        data["debug_ramped_target_temp_c"] = round(self.control.ramped_target_temp_c, 2)
 
         # Apply forced On/Off overrides (handles On/Off modes for all devices
         # including circulation; sets ctx.circ_eid = None when override active)
@@ -1047,9 +1128,12 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return
 
         targets = {
-            f"{self.entry.entry_id}_vpd_target_kpa": STAGE_TARGET_VPD_KPA.get(stage, 1.00),
-            f"{self.entry.entry_id}_target_temp_c":  STAGE_TARGET_TEMP_C.get(stage, 25.0),
-            f"{self.entry.entry_id}_target_rh":      STAGE_TARGET_RH.get(stage, 55.0),
+            f"{self.entry.entry_id}_vpd_target_kpa":     STAGE_TARGET_VPD_KPA.get(stage, 1.00),
+            f"{self.entry.entry_id}_target_temp_c":      STAGE_TARGET_TEMP_C.get(stage, 25.0),
+            f"{self.entry.entry_id}_target_rh":          STAGE_TARGET_RH.get(stage, 55.0),
+            f"{self.entry.entry_id}_night_vpd_target_kpa": STAGE_NIGHT_TARGET_VPD_KPA.get(stage, 1.00),
+            f"{self.entry.entry_id}_night_target_temp_c":  STAGE_NIGHT_TARGET_TEMP_C.get(stage, 20.0),
+            f"{self.entry.entry_id}_night_target_rh":      STAGE_NIGHT_TARGET_RH.get(stage, 55.0),
         }
 
         for entity in component.entities:
@@ -1110,9 +1194,13 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "max_temp_c":         self._num(_eid("max_temp_c"),         30.0),
             "min_rh":             self._num(_eid("min_rh"),             40.0),
             "max_rh":             self._num(_eid("max_rh"),             70.0),
-            "vpd_target_kpa":     self._num(_eid("vpd_target_kpa"),     1.00),
-            "target_temp_c":      self._num(_eid("target_temp_c"),      25.0),
-            "target_rh":          self._num(_eid("target_rh"),          55.0),
+            "vpd_target_kpa":       self._num(_eid("vpd_target_kpa"),       1.00),
+            "target_temp_c":        self._num(_eid("target_temp_c"),        25.0),
+            "target_rh":            self._num(_eid("target_rh"),            55.0),
+            "night_vpd_target_kpa": self._num(_eid("night_vpd_target_kpa"), 1.00),
+            "night_target_temp_c":  self._num(_eid("night_target_temp_c"),  20.0),
+            "night_target_rh":      self._num(_eid("night_target_rh"),      55.0),
+            "temp_ramp_rate_c_per_min": self._num(_eid("temp_ramp_rate_c_per_min"), 1.0),
             "vpd_deadband_kpa":   self._num(_eid("vpd_deadband_kpa"),   0.07),
             "vpd_chase_enabled":  (self._get_entity_state(_eid("vpd_chase_enabled", "switch")) != "off"),
             "night_mode":         self._get_entity_state(_eid(CONF_NIGHT_MODE, "select")) or "Dew Protection",
@@ -1147,6 +1235,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "debug_heater_on_for_s":  0,
             "debug_heater_max_run_s": 0.0,
             "debug_heater_lockout":   "inactive",
+            "debug_ramped_target_temp_c": None,
         }
 
         # --- Target conflict detection ---

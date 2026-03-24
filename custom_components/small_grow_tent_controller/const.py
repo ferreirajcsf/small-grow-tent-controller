@@ -100,3 +100,39 @@ NIGHT_MODE_OPTIONS       = [NIGHT_MODE_DEW, NIGHT_MODE_VPD, NIGHT_MODE_VPD_NO_HE
 
 # Night VPD Chase switch unique-id suffix
 CONF_NIGHT_VPD_CHASE = "night_vpd_chase"
+
+# Night target defaults per stage (temp = day - 5°C, RH auto-computed for same VPD)
+STAGE_NIGHT_TARGET_TEMP_C = {
+    "Seedling":          19.0,
+    "Early Vegetative":  20.0,
+    "Late Vegetative":   21.0,
+    "Early Bloom":       21.0,
+    "Late Bloom":        20.0,
+    "Drying":            16.0,
+}
+
+STAGE_NIGHT_TARGET_VPD_KPA = {
+    "Seedling":          0.70,
+    "Early Vegetative":  0.95,
+    "Late Vegetative":   1.10,
+    "Early Bloom":       1.25,
+    "Late Bloom":        1.45,
+    "Drying":            0.90,
+}
+
+STAGE_NIGHT_TARGET_RH = {
+    "Seedling":          59.2,
+    "Early Vegetative":  50.5,
+    "Late Vegetative":   46.9,
+    "Early Bloom":       40.9,
+    "Late Bloom":        29.1,
+    "Drying":            41.3,
+}
+
+# Exhaust mode extended options (day/night schedule awareness)
+EXHAUST_MODE_DAY_ON   = "Day On"   # on during day window, off at night
+EXHAUST_MODE_NIGHT_ON = "Night On" # on during night window, off during day
+EXHAUST_MODE_OPTIONS  = ["Auto", "On", "Off", EXHAUST_MODE_DAY_ON, EXHAUST_MODE_NIGHT_ON]
+
+# Temperature ramp rate config key
+CONF_TEMP_RAMP_RATE = "temp_ramp_rate_c_per_min"

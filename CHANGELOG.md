@@ -1,5 +1,36 @@
 # Changelog
 
+## [0.1.38] - 2026-03-24
+
+### Added
+
+- **Night Targets** — separate VPD, temperature, and humidity targets for the night (light-off) window. These are independent from the day targets and auto-reset on stage change alongside them:
+
+  | Stage | Night Temp | Night VPD | Night RH |
+  |---|---|---|---|
+  | Seedling | 19°C | 0.70 kPa | 59.2% |
+  | Early Vegetative | 20°C | 0.95 kPa | 50.5% |
+  | Late Vegetative | 21°C | 1.10 kPa | 46.9% |
+  | Early Bloom | 21°C | 1.25 kPa | 40.9% |
+  | Late Bloom | 20°C | 1.45 kPa | 29.1% |
+  | Drying | 16°C | 0.90 kPa | 41.3% |
+
+  Night temp defaults to day temp − 5°C. Night RH is auto-calculated to be congruent with night temp + night VPD target. All three values are freely adjustable. Night targets are used by VPD Chase and VPD Chase (No Heater) night modes. Dew Protection night mode is unaffected — it uses dew point + margin as always.
+
+- **Temperature Ramp Rate** — a new Tuning/Safety slider (°C/min, default 1.0, range 0–5, 0 = disabled) that limits how fast the controller's effective temperature target can change. This prevents abrupt jumps at day↔night transitions and acts as a global protection against rapid temperature changes at any time. The ramp applies in both directions and slides the effective target toward the actual target at no more than the configured rate per poll cycle. The heater safety trip runs independently and is unaffected by the ramp.
+
+- **Exhaust Mode: Day On and Night On** — two new options in the Exhaust Fan mode dropdown:
+  - **Day On** — exhaust on during the light-on window, off at night
+  - **Night On** — exhaust on during the light-off window, off during the day
+  - Exhaust Safety always overrides both modes — the exhaust cannot be turned off while safety thresholds are exceeded, regardless of the mode setting.
+
+### Changed
+
+- The Targets section of the dashboard is now split into **☀️ Day Targets** and **🌙 Night Targets**, each with their own VPD, temperature, and RH sliders displayed in a 3-column grid.
+- Tuning/Safety section now includes the **Temp Ramp Rate** slider.
+
+---
+
 ## [0.1.37] - 2026-03-23
 
 ### Fixed

@@ -35,7 +35,7 @@ All devices are optional — only enable what you actually have:
 |---|---|
 | 🔆 Light | On/off by schedule |
 | 💨 Circulation fan | On whenever controller is active (day and night), off during drying and when controller is disabled |
-| 🌬️ Exhaust fan | Temperature, humidity, and VPD management |
+| 🌬️ Exhaust fan | Temperature, humidity, and VPD management. Mode options: Auto, On, Off, Day On (on during light window), Night On (on during dark window) |
 | 🔥 Heater | Temperature and dew-point protection |
 | 💧 Humidifier | VPD and humidity management |
 | 🧊 Dehumidifier | VPD and humidity management |
@@ -62,7 +62,7 @@ During the lights-off window the controller can operate in one of two modes, sel
 | Mode | Behaviour |
 |---|---|
 | **Dew Protection** *(default)* | Heater pulses to stay above dew point + margin. Humidifier off. Dehumidifier if RH too high. Exhaust follows stage night profile. |
-| **VPD Chase** | Full VPD chase logic runs at night. Dew-point protection always active as a hard floor. Stage exhaust night profile still applied. |
+| **VPD Chase** | Full VPD chase at night using night targets (VPD, temp, RH). Dew-point protection always active as a hard floor. Stage exhaust night profile still applied. |
 | **VPD Chase (No Heater)** | Same as VPD Chase but heater is excluded from chasing VPD. Dew-point protection still fires unconditionally. |
 
 **VPD Chase (No Heater)**
@@ -166,7 +166,11 @@ Once the integration is running, tune it from the entity controls in your dashbo
 | **Target Temperature** | The temperature the controller chases during VPD chase mode |
 | **Target Humidity** | The humidity the controller nudges toward when VPD is in band |
 | **VPD Chase** | When ON (default), actively chases VPD. When OFF, only hard limits are enforced |
-| **Night Mode** | Controls night-time strategy: Dew Protection (default) or VPD Chase |
+| **Night Mode** | Controls night-time strategy: Dew Protection (default), VPD Chase, or VPD Chase (No Heater) |
+| **Night VPD Target** | VPD target used during the light-off window — auto-resets on stage change |
+| **Night Target Temperature** | Temperature target during the light-off window — defaults to day temp − 5°C |
+| **Night Target Humidity** | RH target during the light-off window — auto-calculated for congruence with night temp + night VPD |
+| **Temp Ramp Rate** | Maximum rate of change for the effective temperature target (°C/min). Prevents abrupt jumps at day/night transitions. 0 = disabled (default 1.0) |
 | **Min / Max Temperature** | Hard limits — heater or exhaust kicks in if breached |
 | **Min / Max Humidity** | Hard limits for RH |
 | **VPD Deadband** | How far VPD can drift before the controller acts (default 0.07 kPa) |
@@ -213,7 +217,7 @@ The heater runs in soft pulses to keep air temperature above `dew point + margin
 | Drying | On continuously |
 
 **VPD Chase**
-Full VPD chase logic runs at night — the controller uses all available devices to work toward the VPD, temperature, and RH targets. Two behaviours are always enforced on top:
+Full VPD chase logic runs at night using the **night targets** (Night VPD Target, Night Target Temperature, Night Target Humidity). Two behaviours are always enforced on top:
 - **Dew-point floor** — if VPD chase leaves the heater off but temperature is at or below dew point + margin, the heater turns on regardless.
 - **Stage exhaust night profile** — the per-stage exhaust setting is still applied.
 
@@ -231,7 +235,10 @@ During the lights-on period, if temperature or humidity breach their min/max lim
 
 If the **Exhaust Safety** is enabled and its thresholds are exceeded, any attempt to turn the exhaust off (including from a hard limit like `temp_below_min`) is silently blocked — the fan stays on and the reason is logged with a `[SAFETY: blocked_off]` suffix.
 
-### 8. Day mode — VPD chase
+### 8. Temperature ramp
+When **Temp Ramp Rate** is greater than 0, the controller limits how fast the effective temperature target can change. At the day→night and night→day boundaries, rather than jumping immediately to the new target, the effective target slides toward it at no more than the configured °C/min. This applies in both directions and to all control modes that use a temperature target. The heater safety trip runs independently and is unaffected.
+
+### 9. Day mode — VPD chase
 When everything is within limits and the **VPD Chase** switch is ON, the controller fine-tunes conditions by chasing the stage's VPD target within the configured deadband, using the heater, exhaust, humidifier, and dehumidifier as needed.
 
 When VPD Chase is OFF, the controller operates in **limits-only mode**: devices are left neutral as long as temp and RH stay within their min/max limits. Useful for simpler thermostat/humidistat style control.

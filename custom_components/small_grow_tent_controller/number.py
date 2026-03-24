@@ -16,6 +16,9 @@ from .const import (
     STAGE_TARGET_VPD_KPA,
     STAGE_TARGET_TEMP_C,
     STAGE_TARGET_RH,
+    STAGE_NIGHT_TARGET_TEMP_C,
+    STAGE_NIGHT_TARGET_VPD_KPA,
+    STAGE_NIGHT_TARGET_RH,
     DEFAULT_STAGE,
 )
 
@@ -38,6 +41,10 @@ NUMBERS = [
     ("humidifier_hold_s",       "Humidifier Hold Time",         10.0, 600.0, 5.0,  45.0,  "s"),
     ("dehumidifier_hold_s",     "Dehumidifier Hold Time",       10.0, 600.0, 5.0,  45.0,  "s"),
     ("leaf_temp_offset_c",      "Leaf Temp Offset",             -5.0, 5.0,   0.1,  -1.5,  "°C"),
+    ("night_vpd_target_kpa",    "Night VPD Target",             0.40, 2.50,  0.01, 1.00,  "kPa"),
+    ("night_target_temp_c",     "Night Target Temperature",     10.0, 35.0,  0.1,  20.0,  "°C"),
+    ("night_target_rh",         "Night Target Humidity",        10.0, 95.0,  0.5,  55.0,  "%"),
+    ("temp_ramp_rate_c_per_min","Temp Ramp Rate",               0.0,  5.0,   0.1,  1.0,   "°C/min"),
 ]
 
 
@@ -78,6 +85,12 @@ async def async_setup_entry(
             entities.append(TempTargetNumber(hass, entry, *cfg))
         elif cfg[0] == "target_rh":
             entities.append(RhTargetNumber(hass, entry, *cfg))
+        elif cfg[0] == "night_vpd_target_kpa":
+            entities.append(NightVpdTargetNumber(hass, entry, *cfg))
+        elif cfg[0] == "night_target_temp_c":
+            entities.append(NightTempTargetNumber(hass, entry, *cfg))
+        elif cfg[0] == "night_target_rh":
+            entities.append(NightRhTargetNumber(hass, entry, *cfg))
         else:
             entities.append(GrowNumber(hass, entry, *cfg))
 
@@ -166,6 +179,47 @@ class RhTargetNumber(GrowNumber):
     async def async_set_to_stage_default(self, stage: str) -> None:
         """Called by the coordinator when stage changes — resets to the stage default."""
         default = STAGE_TARGET_RH.get(stage, STAGE_TARGET_RH[DEFAULT_STAGE])
+        self._value = default
+        await self.store.async_save({"value": self._value})
+        self.async_write_ha_state()
+
+class NightVpdTargetNumber(GrowNumber):
+    """Night VPD Target — auto-resets to stage default on stage change."""
+
+    def __init__(self, hass, entry, key, name, min_v, max_v, step, default, unit):
+        super().__init__(hass, entry, key, name, min_v, max_v, step, default, unit)
+        self._attr_icon = "mdi:weather-night"
+
+    async def async_set_to_stage_default(self, stage: str) -> None:
+        default = STAGE_NIGHT_TARGET_VPD_KPA.get(stage, STAGE_NIGHT_TARGET_VPD_KPA[DEFAULT_STAGE])
+        self._value = default
+        await self.store.async_save({"value": self._value})
+        self.async_write_ha_state()
+
+
+class NightTempTargetNumber(GrowNumber):
+    """Night Target Temperature — auto-resets to stage default (day - 5°C) on stage change."""
+
+    def __init__(self, hass, entry, key, name, min_v, max_v, step, default, unit):
+        super().__init__(hass, entry, key, name, min_v, max_v, step, default, unit)
+        self._attr_icon = "mdi:thermometer-minus"
+
+    async def async_set_to_stage_default(self, stage: str) -> None:
+        default = STAGE_NIGHT_TARGET_TEMP_C.get(stage, STAGE_NIGHT_TARGET_TEMP_C[DEFAULT_STAGE])
+        self._value = default
+        await self.store.async_save({"value": self._value})
+        self.async_write_ha_state()
+
+
+class NightRhTargetNumber(GrowNumber):
+    """Night Target Humidity — auto-resets to stage default (RH for night temp + VPD) on stage change."""
+
+    def __init__(self, hass, entry, key, name, min_v, max_v, step, default, unit):
+        super().__init__(hass, entry, key, name, min_v, max_v, step, default, unit)
+        self._attr_icon = "mdi:water-percent"
+
+    async def async_set_to_stage_default(self, stage: str) -> None:
+        default = STAGE_NIGHT_TARGET_RH.get(stage, STAGE_NIGHT_TARGET_RH[DEFAULT_STAGE])
         self._value = default
         await self.store.async_save({"value": self._value})
         self.async_write_ha_state()
