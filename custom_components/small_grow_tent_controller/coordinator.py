@@ -357,30 +357,62 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             setattr(ctx, eid_attr, None)
 
         # Exhaust: special safety check + Day On / Night On schedule modes
+        # Day On / Night On force the exhaust on during their window only.
+        # Outside their window they fall back to Auto — the normal control
+        # logic runs as if the mode were set to Auto.
         eid  = ctx.exhaust_eid
         mode = self._get_mode("exhaust_mode") if eid else "Auto"
         if mode != "Auto" and eid:
             if mode == "Day On":
-                desired = ctx.is_day
-                reason  = f"override:day_on ({'day' if ctx.is_day else 'night'})"
+                if ctx.is_day:
+                    # In window — force on
+                    reason = "override:day_on (day window)"
+                    if self._exhaust_safety_blocks_off(ctx) or True:  # desired=True always here
+                        pass
+                    ctx.data["debug_exhaust_reason"] = reason
+                    cur = self._switch_is_on(eid)
+                    if cur is not None and not cur:
+                        await self._async_switch(eid, True)
+                        self.control.last_exhaust_change = now
+                        self._record_action(f"Exhaust ON · {reason}")
+                    ctx.exhaust_on  = True
+                    ctx.exhaust_eid = None  # handled — skip auto
+                else:
+                    # Outside window — fall through to auto control
+                    ctx.data["debug_exhaust_reason"] = "day_on: night window -> auto"
+                    # ctx.exhaust_eid left intact — auto logic runs
             elif mode == "Night On":
-                desired = not ctx.is_day
-                reason  = f"override:night_on ({'night' if not ctx.is_day else 'day'})"
+                if not ctx.is_day:
+                    # In window — force on
+                    reason = "override:night_on (night window)"
+                    ctx.data["debug_exhaust_reason"] = reason
+                    cur = self._switch_is_on(eid)
+                    if cur is not None and not cur:
+                        await self._async_switch(eid, True)
+                        self.control.last_exhaust_change = now
+                        self._record_action(f"Exhaust ON · {reason}")
+                    ctx.exhaust_on  = True
+                    ctx.exhaust_eid = None  # handled — skip auto
+                else:
+                    # Outside window — fall through to auto control
+                    ctx.data["debug_exhaust_reason"] = "night_on: day window -> auto"
+                    # ctx.exhaust_eid left intact — auto logic runs
             else:
+                # On / Off hard override
                 desired = mode == "On"
                 reason  = f"override:{mode.lower()}"
-            # Safety always overrides — exhaust cannot be turned off if safety blocks it
-            if not desired and self._exhaust_safety_blocks_off(ctx):
-                desired = True
-                reason  += " [SAFETY: blocked_off]"
-            ctx.data["debug_exhaust_reason"] = reason
-            cur = self._switch_is_on(eid)
-            if cur is not None and cur != desired:
-                await self._async_switch(eid, desired)
-                self.control.last_exhaust_change = now
-                self._record_action(f"Exhaust {'ON' if desired else 'OFF'} · {reason}")
-            ctx.exhaust_on  = desired
-            ctx.exhaust_eid = None
+                # Safety always overrides — exhaust cannot be turned off if safety blocks it
+                if not desired and self._exhaust_safety_blocks_off(ctx):
+                    desired = True
+                    reason  += " [SAFETY: blocked_off]"
+                ctx.data["debug_exhaust_reason"] = reason
+                cur = self._switch_is_on(eid)
+                if cur is not None and cur != desired:
+                    await self._async_switch(eid, desired)
+                    self.control.last_exhaust_change = now
+                    self._record_action(f"Exhaust {'ON' if desired else 'OFF'} · {reason}")
+                ctx.exhaust_on  = desired
+                ctx.exhaust_eid = None
 
         return ctx
 
@@ -938,6 +970,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     continue
                 mode = self._get_mode(mode_key)
                 if mode == "Auto":
+                    continue
+                # Day On / Night On: when controller is disabled, treat as Auto
+                # (no auto logic runs when disabled, so just skip these modes)
+                if label == "Exhaust" and mode in ("Day On", "Night On"):
                     continue
                 desired = mode == "On"
                 if label == "Exhaust" and mode == "Off":

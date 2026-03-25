@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.40] - 2026-03-25
+
+### Fixed
+
+- **Exhaust Mode Day On / Night On now fall back to Auto outside their window** — previously, selecting `Day On` would force the exhaust off at night, and `Night On` would force it off during the day. This is now corrected: when outside their active window, both modes hand control back to the normal auto logic (VPD chase, hard limits, night mode) exactly as if the mode were set to `Auto`. The exhaust is only forced on during the active window — outside it, the controller decides.
+
+  When the controller is disabled, `Day On` and `Night On` are treated as `Auto` (no auto logic runs when disabled, so the exhaust is left in whatever state it's in).
+
+---
+
 ## [0.1.39] - 2026-03-25
 
 ### Fixed
