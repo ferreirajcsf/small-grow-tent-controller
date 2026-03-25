@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.39] - 2026-03-25
+
+### Fixed
+
+- **Night Target Temperature now displays one decimal place** — the entity now sets `suggested_display_precision = 1` so HA renders it as e.g. `21.0°C` consistently, matching the day Target Temperature display. The same attribute is set on the day Target Temperature and Night Target Humidity entities for explicit consistency across all target number cards.
+
+---
+
 ## [0.1.38] - 2026-03-24
 
 ### Added

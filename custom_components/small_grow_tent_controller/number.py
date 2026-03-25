@@ -157,6 +157,8 @@ class VpdTargetNumber(GrowNumber):
 class TempTargetNumber(GrowNumber):
     """Target Temperature number that auto-resets to the stage default when the stage changes."""
 
+    _attr_suggested_display_precision = 1
+
     def __init__(self, hass, entry, key, name, min_v, max_v, step, default, unit):
         super().__init__(hass, entry, key, name, min_v, max_v, step, default, unit)
         self._attr_icon = "mdi:thermometer"
@@ -200,6 +202,8 @@ class NightVpdTargetNumber(GrowNumber):
 class NightTempTargetNumber(GrowNumber):
     """Night Target Temperature — auto-resets to stage default (day - 5°C) on stage change."""
 
+    _attr_suggested_display_precision = 1
+
     def __init__(self, hass, entry, key, name, min_v, max_v, step, default, unit):
         super().__init__(hass, entry, key, name, min_v, max_v, step, default, unit)
         self._attr_icon = "mdi:thermometer-minus"
@@ -213,6 +217,8 @@ class NightTempTargetNumber(GrowNumber):
 
 class NightRhTargetNumber(GrowNumber):
     """Night Target Humidity — auto-resets to stage default (RH for night temp + VPD) on stage change."""
+
+    _attr_suggested_display_precision = 0
 
     def __init__(self, hass, entry, key, name, min_v, max_v, step, default, unit):
         super().__init__(hass, entry, key, name, min_v, max_v, step, default, unit)

@@ -485,9 +485,9 @@ views:
                     display_mode: buttons
                     fill_container: true
                     card_mod:
-                      style: |
-                        ha-card { padding-top: 4px !important; padding-bottom: 4px !important; }
-                        mushroom-number-display-value { --display-precision: 1; }
+                      style: >
+                        ha-card { padding-top: 4px !important; padding-bottom:
+                        4px !important; }
                   - type: custom:mushroom-number-card
                     entity: number.small_grow_tent_controller_night_target_humidity
                     name: Target RH
@@ -495,9 +495,9 @@ views:
                     display_mode: buttons
                     fill_container: true
                     card_mod:
-                      style: |
-                        ha-card { padding-top: 4px !important; padding-bottom: 4px !important; }
-                        mushroom-number-display-value { --display-precision: 0; }
+                      style: >
+                        ha-card { padding-top: 4px !important; padding-bottom:
+                        4px !important; }
 
           - type: vertical-stack
             view_layout:
