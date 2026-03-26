@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.43] - 2026-03-26
+
+### Fixed
+
+- **MPC NameError on sensor dropout** — a stale `_mpc_simulate(temp0, rh0, ...)` call was left in `_apply_mpc_day` after the v0.1.42 refactor. The variables `temp0` and `rh0` were defined in the old method body but removed when the optimisation was moved to the thread executor. This caused a `NameError` crash whenever MPC ran with unavailable sensors. The three stale lines have been removed — `temp_pred`, `rh_pred`, and `vpd_pred` are now used directly from the executor return value as intended.
+
+---
+
 ## [0.1.42] - 2026-03-26
 
 ### Fixed

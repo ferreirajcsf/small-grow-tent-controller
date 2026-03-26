@@ -826,11 +826,6 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ctx.mpc_w_vpd, ctx.mpc_w_temp, ctx.mpc_w_rh, ctx.mpc_w_switch,
         )
 
-        # Predict where we'll be after horizon steps
-        temp_pred, rh_pred = self._mpc_simulate(temp0, rh0, best_actions, ctx)
-        leaf_pred = temp_pred + float(ctx.data.get("leaf_temp_offset_c", -1.5))
-        vpd_pred  = vpd_leaf_kpa(temp_pred, rh_pred, leaf_pred)
-
         ctx.data["debug_mpc_horizon"]    = horizon
         ctx.data["debug_mpc_score"]      = round(best_score, 4)
         ctx.data["debug_mpc_pred_temp"]  = round(temp_pred, 2)
