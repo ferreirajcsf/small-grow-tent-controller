@@ -45,6 +45,21 @@ NUMBERS = [
     ("night_target_temp_c",     "Night Target Temperature",     10.0, 35.0,  0.1,  20.0,  "°C"),
     ("night_target_rh",         "Night Target Humidity",        10.0, 95.0,  0.5,  55.0,  "%"),
     ("temp_ramp_rate_c_per_min","Temp Ramp Rate",               0.0,  5.0,   0.1,  1.0,   "°C/min"),
+    # MPC model parameters
+    ("mpc_horizon_steps",       "MPC Horizon Steps",            3,    60,    1,    18,    "steps"),
+    ("mpc_temp_amb",            "MPC Ambient Temp",             5.0,  35.0,  0.1,  20.0,  "°C"),
+    ("mpc_rh_amb",              "MPC Ambient RH",               10.0, 95.0,  0.5,  55.0,  "%"),
+    ("mpc_a_heater",            "MPC a_heater",                 -2.0, 2.0,   0.001, 0.423, "°C/step"),
+    ("mpc_a_exhaust",           "MPC a_exhaust",                -2.0, 2.0,   0.001,-0.082, "°C/step"),
+    ("mpc_a_passive",           "MPC a_passive",                0.0,  0.5,   0.001, 0.008, "/step"),
+    ("mpc_a_bias",              "MPC a_bias",                   -1.0, 1.0,   0.001, 0.057, "°C/step"),
+    ("mpc_b_exhaust",           "MPC b_exhaust",                -5.0, 5.0,   0.01, -1.196, "%/step"),
+    ("mpc_b_passive",           "MPC b_passive",                0.0,  0.5,   0.001, 0.006, "/step"),
+    ("mpc_b_bias",              "MPC b_bias",                   -5.0, 5.0,   0.01,  0.556, "%/step"),
+    ("mpc_w_vpd",               "MPC Weight VPD",               0.0,  10.0,  0.1,  5.0,   ""),
+    ("mpc_w_temp",              "MPC Weight Temp",              0.0,  10.0,  0.1,  2.0,   ""),
+    ("mpc_w_rh",                "MPC Weight RH",                0.0,  10.0,  0.1,  1.0,   ""),
+    ("mpc_w_switch",            "MPC Switch Penalty",           0.0,  5.0,   0.1,  0.5,   ""),
 ]
 
 

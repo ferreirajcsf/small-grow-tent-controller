@@ -24,6 +24,9 @@ from .const import (
     NIGHT_MODE_OPTIONS,
     NIGHT_MODE_VPD_NO_HEATER,
     EXHAUST_MODE_OPTIONS,
+    CONF_DAY_MODE,
+    DAY_MODE_VPD,
+    DAY_MODE_OPTIONS,
 )
 
 MODE_OPTIONS = ["Auto", "On", "Off"]
@@ -55,7 +58,7 @@ MODE_DEFS: list[_ModeDef] = [
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ):
-    entities: list[SelectEntity] = [StageSelect(entry), NightModeSelect(entry)]
+    entities: list[SelectEntity] = [StageSelect(entry), NightModeSelect(entry), DayModeSelect(entry)]
     for d in MODE_DEFS:
         if not bool(_opt(entry, d.enable_conf, True)):
             continue
@@ -179,6 +182,36 @@ class ExhaustModeSelect(SelectEntity, RestoreEntity):
 
     async def async_select_option(self, option: str):
         if option not in EXHAUST_MODE_OPTIONS:
+            return
+        self._current = option
+        self.async_write_ha_state()
+
+class DayModeSelect(SelectEntity, RestoreEntity):
+    """Day-time control strategy: VPD Chase (default), MPC, or Limits Only."""
+
+    _attr_has_entity_name = True
+    _attr_options         = DAY_MODE_OPTIONS
+    _attr_icon            = "mdi:weather-sunny"
+
+    def __init__(self, entry: ConfigEntry):
+        self.entry = entry
+        self._attr_unique_id   = f"{entry.entry_id}_{CONF_DAY_MODE}"
+        self._attr_name        = "Day Mode"
+        self._attr_device_info = device_info_for_entry(entry)
+        self._current          = DAY_MODE_VPD  # default: existing behaviour
+
+    async def async_added_to_hass(self):
+        last = await self.async_get_last_state()
+        if last and last.state in DAY_MODE_OPTIONS:
+            self._current = last.state
+        self.async_write_ha_state()
+
+    @property
+    def current_option(self):
+        return self._current
+
+    async def async_select_option(self, option: str):
+        if option not in DAY_MODE_OPTIONS:
             return
         self._current = option
         self.async_write_ha_state()

@@ -67,6 +67,7 @@ views:
                         'safety_trip:heater_max_run':'Safety: Heater max run',
                         'night_on_dewpoint_protect':'Night: Dew (ON)',
                         'night_auto_dewpoint_protect':'Night: Dew (AUTO)',
+                        'mpc':'MPC',
                         'night_vpd_chase':'Night: VPD Chase',
                         'night_vpd_chase_no_heater':'Night: VPD Chase (no heater)',
                         'hard_limit:temp_below_min':'Limit: Temp low','hard_limit:temp_above_max':'Limit: Temp high',
@@ -117,6 +118,11 @@ views:
                     entity: select.small_grow_tent_controller_night_mode
                     name: Night Mode
                     icon: mdi:weather-night
+                    fill_container: true
+                  - type: custom:mushroom-select-card
+                    entity: select.small_grow_tent_controller_day_mode
+                    name: Day Mode
+                    icon: mdi:weather-sunny
                     fill_container: true
           - type: vertical-stack
             view_layout:
@@ -321,6 +327,41 @@ views:
                         style: >
                           ha-card { padding-top: 4px !important; padding-bottom:
                           4px !important; }
+              - type: entities
+                entities:
+                  - type: custom:fold-entity-row
+                    head:
+                      type: section
+                      label: MPC Parameters (paste from mpc_identify.py)
+                    entities:
+                      - entity: number.small_grow_tent_controller_mpc_horizon_steps
+                        name: Horizon Steps
+                      - entity: number.small_grow_tent_controller_mpc_ambient_temp
+                        name: Ambient Temp (°C)
+                      - entity: number.small_grow_tent_controller_mpc_ambient_rh
+                        name: Ambient RH (%)
+                      - entity: number.small_grow_tent_controller_mpc_a_heater
+                        name: a_heater
+                      - entity: number.small_grow_tent_controller_mpc_a_exhaust
+                        name: a_exhaust
+                      - entity: number.small_grow_tent_controller_mpc_a_passive
+                        name: a_passive
+                      - entity: number.small_grow_tent_controller_mpc_a_bias
+                        name: a_bias
+                      - entity: number.small_grow_tent_controller_mpc_b_exhaust
+                        name: b_exhaust
+                      - entity: number.small_grow_tent_controller_mpc_b_passive
+                        name: b_passive
+                      - entity: number.small_grow_tent_controller_mpc_b_bias
+                        name: b_bias
+                      - entity: number.small_grow_tent_controller_mpc_weight_vpd
+                        name: Weight VPD
+                      - entity: number.small_grow_tent_controller_mpc_weight_temp
+                        name: Weight Temp
+                      - entity: number.small_grow_tent_controller_mpc_weight_rh
+                        name: Weight RH
+                      - entity: number.small_grow_tent_controller_mpc_switch_penalty
+                        name: Switch Penalty
           - type: vertical-stack
             view_layout:
               grid-area: devtgt

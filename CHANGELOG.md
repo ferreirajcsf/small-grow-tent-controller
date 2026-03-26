@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.1.41] - 2026-03-26
+
+### Added
+
+- **MPC (Model Predictive Control) day mode** — a new `Day Mode` selector in the Grow Tent section lets you choose how the controller manages conditions during the light-on window:
+
+  - **VPD Chase** *(default — existing behaviour unchanged)*
+  - **MPC** — uses a first-order thermal/humidity model identified from your real sensor history to plan heater and exhaust actions several steps ahead, reducing overshoot and handling actuator lag explicitly
+  - **Limits Only** — only hard temperature and humidity limits are enforced (previously controlled by the VPD Chase switch)
+
+  The MPC controller evaluates all combinations of heater/exhaust states over a configurable planning horizon (default 18 steps = 3 minutes), simulates tent conditions forward using the identified model, and selects the sequence that minimises a weighted cost of VPD error, temperature error, RH error, and unnecessary device switching. Only the first step of the optimal plan is executed each cycle.
+
+  Humidity devices (humidifier/dehumidifier) fall back to simple RH deadband control in MPC mode — a reliable humidity model requires a proper humidifier sensor, which will be added in a future release.
+
+- **MPC model parameters** — 15 new number entities in a collapsible MPC Parameters section in Tuning/Safety, pre-populated with the parameters identified from the included `mpc_identify.py` script. Key parameters: ambient temp/RH, model coefficients (a_heater, a_exhaust, a_passive, a_bias, b_exhaust, b_passive, b_bias), cost weights (VPD, temp, RH, switch penalty), and horizon steps.
+
+- **`mpc_identify.py`** — standalone Python script (not part of the HA integration) that reads 7 days of raw state history from your HA SQLite database, fits the thermal and humidity model parameters using ordinary least squares regression, validates the fit with plots, and outputs the parameters ready to paste into the controller. Run once after installation to identify your tent's model. See the script header for usage instructions.
+
+### Notes
+
+- The VPD Chase switch remains for backward compatibility. When Day Mode is set to MPC or Limits Only, the VPD Chase switch has no effect.
+- MPC operates only during the day (light-on) window. Night mode (Dew Protection / VPD Chase / VPD Chase No Heater) is unchanged.
+- Hard limits still fire before MPC, same as with VPD Chase.
+- Default model parameters are pre-set to values identified from a real 60×60cm grow tent with a ceramic fan heater and exhaust fan. Run `mpc_identify.py` on your own history for best results.
+
+---
+
 ## [0.1.40] - 2026-03-25
 
 ### Fixed

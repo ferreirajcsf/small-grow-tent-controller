@@ -101,6 +101,13 @@ NIGHT_MODE_OPTIONS       = [NIGHT_MODE_DEW, NIGHT_MODE_VPD, NIGHT_MODE_VPD_NO_HE
 # Night VPD Chase switch unique-id suffix
 CONF_NIGHT_VPD_CHASE = "night_vpd_chase"
 
+# Day control mode select options
+CONF_DAY_MODE       = "day_mode"
+DAY_MODE_VPD        = "VPD Chase"
+DAY_MODE_MPC        = "MPC"
+DAY_MODE_LIMITS     = "Limits Only"
+DAY_MODE_OPTIONS    = [DAY_MODE_VPD, DAY_MODE_MPC, DAY_MODE_LIMITS]
+
 # Night target defaults per stage (temp = day - 5°C, RH auto-computed for same VPD)
 STAGE_NIGHT_TARGET_TEMP_C = {
     "Seedling":          19.0,

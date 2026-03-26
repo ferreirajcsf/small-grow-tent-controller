@@ -24,6 +24,9 @@ from .const import (
     NIGHT_MODE_VPD_NO_HEATER,
     EXHAUST_MODE_DAY_ON,
     EXHAUST_MODE_NIGHT_ON,
+    CONF_DAY_MODE,
+    DAY_MODE_MPC,
+    DAY_MODE_LIMITS,
     STAGE_TARGET_TEMP_C,
     STAGE_TARGET_RH,
     CONF_LIGHT_SWITCH,
@@ -145,6 +148,22 @@ class _Ctx:
     night_target_temp:  float
     night_target_rh:    float
     temp_ramp_rate:     float
+    day_mode:           str
+    # MPC model parameters
+    mpc_horizon:        int
+    mpc_temp_amb:       float
+    mpc_rh_amb:         float
+    mpc_a_heater:       float
+    mpc_a_exhaust:      float
+    mpc_a_passive:      float
+    mpc_a_bias:         float
+    mpc_b_exhaust:      float
+    mpc_b_passive:      float
+    mpc_b_bias:         float
+    mpc_w_vpd:          float
+    mpc_w_temp:         float
+    mpc_w_rh:           float
+    mpc_w_switch:       float
 
 
 class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
@@ -641,6 +660,162 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 await self._exhaust_off_if_on(ctx, "night VPD chase: profile=auto, conditions_ok")
 
         # ------------------------------------------------------------------ #
+    #  MPC day control                                                     #
+    # ------------------------------------------------------------------ #
+
+    def _mpc_simulate(
+        self,
+        temp0: float, rh0: float,
+        actions: list[tuple[int, int]],   # list of (heater, exhaust) per step
+        ctx: "_Ctx",
+    ) -> tuple[float, float]:
+        """Simulate tent state forward using the identified model."""
+        temp = temp0
+        rh   = rh0
+        ta   = ctx.mpc_temp_amb
+        ra   = ctx.mpc_rh_amb
+        for h, e in actions:
+            temp += (ctx.mpc_a_heater  * h
+                   + ctx.mpc_a_exhaust * e
+                   + ctx.mpc_a_passive * (ta - temp)
+                   + ctx.mpc_a_bias)
+            rh   += (ctx.mpc_b_exhaust * e
+                   + ctx.mpc_b_passive * (ra - rh)
+                   + ctx.mpc_b_bias)
+            # Clamp to physically plausible range
+            temp = max(0.0,   min(60.0, temp))
+            rh   = max(0.1,   min(99.9, rh))
+        return temp, rh
+
+    def _mpc_score(
+        self,
+        temp_final: float, rh_final: float,
+        target_temp: float, target_rh: float, target_vpd: float,
+        actions: list[tuple[int, int]],
+        heater_on_now: bool, exhaust_on_now: bool,
+        ctx: "_Ctx",
+    ) -> float:
+        """Score a candidate action sequence. Lower = better."""
+        # Compute implied VPD at predicted state
+        leaf_temp = temp_final + float(ctx.data.get("leaf_temp_offset_c", -1.5))
+        pred_vpd  = vpd_leaf_kpa(temp_final, rh_final, leaf_temp)
+
+        temp_err = (temp_final  - target_temp) ** 2
+        rh_err   = (rh_final    - target_rh)   ** 2
+        vpd_err  = (pred_vpd    - target_vpd)  ** 2
+
+        # Switching penalty: penalise changing device state on first step
+        first_h, first_e = actions[0]
+        switch_penalty = (
+            (abs(first_h - int(heater_on_now)) + abs(first_e - int(exhaust_on_now)))
+            * ctx.mpc_w_switch
+        )
+
+        return (ctx.mpc_w_vpd  * vpd_err
+              + ctx.mpc_w_temp * temp_err
+              + ctx.mpc_w_rh   * rh_err
+              + switch_penalty)
+
+    async def _apply_mpc_day(self, ctx: "_Ctx") -> None:
+        """MPC day control.
+
+        Evaluates all combinations of heater/exhaust states over a planning
+        horizon, simulates tent temperature and RH forward using the identified
+        first-order model, and selects the sequence that minimises a weighted
+        cost function combining VPD error, temperature error, RH error, and
+        a device switching penalty.
+
+        Only the first step of the optimal sequence is executed. Hard limits
+        and hold times are still enforced — MPC cannot override them.
+        """
+        ctx.data["control_mode"] = "mpc"
+
+        # Targets: always use day targets in this method
+        target_vpd  = float(ctx.data.get("vpd_target_kpa",  STAGE_TARGET_VPD_KPA.get(ctx.stage, 1.00)))
+        target_temp = float(ctx.data.get("target_temp_c",   STAGE_TARGET_TEMP_C.get(ctx.stage, 25.0)))
+        target_rh   = float(ctx.data.get("target_rh",       STAGE_TARGET_RH.get(ctx.stage, 55.0)))
+        horizon     = max(1, int(ctx.mpc_horizon))
+
+        # Current state
+        temp0 = ctx.avg_temp
+        rh0   = ctx.avg_rh
+
+        # Enumerate all binary action sequences over the horizon
+        # For a 2-device (heater, exhaust) horizon of N steps: 4^N combinations
+        # Cap at horizon=10 to limit to 4^10=1M — in practice horizon≤6 (4^6=4096) is fast
+        if horizon > 10:
+            horizon = 10
+            _LOGGER.warning("%s: MPC horizon capped at 10 steps to limit computation",
+                            self.entry.title)
+
+        best_score   = float("inf")
+        best_actions = [(0, 0)] * horizon
+
+        # Build all combinations using itertools-style enumeration
+        n_combos = 4 ** horizon
+        for combo_idx in range(n_combos):
+            actions = []
+            idx = combo_idx
+            for _ in range(horizon):
+                bit = idx % 4
+                idx //= 4
+                h = 1 if bit >= 2 else 0
+                e = 1 if bit % 2 == 1 else 0
+                actions.append((h, e))
+
+            temp_final, rh_final = self._mpc_simulate(temp0, rh0, actions, ctx)
+            score = self._mpc_score(
+                temp_final, rh_final,
+                target_temp, target_rh, target_vpd,
+                actions,
+                ctx.heater_on, ctx.exhaust_on,
+                ctx,
+            )
+            if score < best_score:
+                best_score   = score
+                best_actions = actions
+
+        # Execute first step of optimal plan
+        h_want, e_want = best_actions[0]
+
+        # Predict where we'll be after horizon steps
+        temp_pred, rh_pred = self._mpc_simulate(temp0, rh0, best_actions, ctx)
+        leaf_pred = temp_pred + float(ctx.data.get("leaf_temp_offset_c", -1.5))
+        vpd_pred  = vpd_leaf_kpa(temp_pred, rh_pred, leaf_pred)
+
+        ctx.data["debug_mpc_horizon"]    = horizon
+        ctx.data["debug_mpc_score"]      = round(best_score, 4)
+        ctx.data["debug_mpc_pred_temp"]  = round(temp_pred, 2)
+        ctx.data["debug_mpc_pred_rh"]    = round(rh_pred, 2)
+        ctx.data["debug_mpc_pred_vpd"]   = round(vpd_pred, 3)
+        ctx.data["debug_mpc_plan"]       = str(best_actions[:3])  # first 3 steps for debug
+
+        # Heater: apply if hold time allows and safety permits
+        if h_want == 1:
+            await self._heater_on_if_allowed(ctx, f"mpc: plan={best_actions[:2]} score={best_score:.3f}")
+        else:
+            await self._heater_off(ctx, f"mpc: plan={best_actions[:2]} score={best_score:.3f}")
+
+        # Exhaust: apply if hold time allows
+        if e_want == 1:
+            await self._exhaust_on_if_off(ctx, f"mpc: plan={best_actions[:2]}")
+        else:
+            await self._exhaust_off_if_on(ctx, f"mpc: plan={best_actions[:2]}")
+
+        # Humidity devices: fall back to simple RH-deadband control since
+        # we don't have a reliable humidifier model yet
+        deadband_rh = 2.0
+        if ctx.avg_rh < (target_rh - deadband_rh):
+            await self._humidifier_on(ctx, "mpc: rh below target")
+            await self._dehumidifier_off(ctx, "mpc: rh below target")
+        elif ctx.avg_rh > (target_rh + deadband_rh):
+            await self._humidifier_off(ctx, "mpc: rh above target")
+            await self._reduce_humidity(ctx, "mpc: rh above target")
+        else:
+            await self._humidifier_off(ctx, "mpc: rh in band")
+            await self._dehumidifier_off(ctx, "mpc: rh in band")
+
+        # ------------------------------------------------------------------ #
     #  Day hard limits                                                     #
     # ------------------------------------------------------------------ #
 
@@ -1046,6 +1221,21 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             night_target_temp  = float(data.get("night_target_temp_c",  20.0)),
             night_target_rh    = float(data.get("night_target_rh",      55.0)),
             temp_ramp_rate     = float(data.get("temp_ramp_rate_c_per_min", 1.0)),
+            day_mode           = data.get("day_mode", "VPD Chase"),
+            mpc_horizon        = int(data.get("mpc_horizon_steps", 18)),
+            mpc_temp_amb       = float(data.get("mpc_temp_amb",    20.0)),
+            mpc_rh_amb         = float(data.get("mpc_rh_amb",      55.0)),
+            mpc_a_heater       = float(data.get("mpc_a_heater",     0.423)),
+            mpc_a_exhaust      = float(data.get("mpc_a_exhaust",   -0.082)),
+            mpc_a_passive      = float(data.get("mpc_a_passive",    0.008)),
+            mpc_a_bias         = float(data.get("mpc_a_bias",       0.057)),
+            mpc_b_exhaust      = float(data.get("mpc_b_exhaust",   -1.196)),
+            mpc_b_passive      = float(data.get("mpc_b_passive",    0.006)),
+            mpc_b_bias         = float(data.get("mpc_b_bias",       0.556)),
+            mpc_w_vpd          = float(data.get("mpc_w_vpd",        5.0)),
+            mpc_w_temp         = float(data.get("mpc_w_temp",       2.0)),
+            mpc_w_rh           = float(data.get("mpc_w_rh",         1.0)),
+            mpc_w_switch       = float(data.get("mpc_w_switch",     0.5)),
         )
 
         # --- Temperature ramp ---
@@ -1145,7 +1335,12 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             hard_limit_active = await self._apply_day_hard_limits(ctx)
             if not hard_limit_active:
-                if data.get("vpd_chase_enabled", True):
+                if ctx.day_mode == DAY_MODE_MPC:
+                    await self._apply_mpc_day(ctx)
+                elif ctx.day_mode == DAY_MODE_LIMITS:
+                    ctx.data["control_mode"] = "limits_only"
+                elif data.get("vpd_chase_enabled", True):
+                    # Default / VPD Chase mode
                     await self._apply_vpd_chase(ctx)
                 else:
                     ctx.data["control_mode"] = "limits_only"
@@ -1240,6 +1435,22 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "vpd_deadband_kpa":   self._num(_eid("vpd_deadband_kpa"),   0.07),
             "vpd_chase_enabled":  (self._get_entity_state(_eid("vpd_chase_enabled", "switch")) != "off"),
             "night_mode":         self._get_entity_state(_eid(CONF_NIGHT_MODE, "select")) or "Dew Protection",
+            "day_mode":           self._get_entity_state(_eid(CONF_DAY_MODE, "select")) or "VPD Chase",
+            # MPC parameters
+            "mpc_horizon_steps":  int(self._num(_eid("mpc_horizon_steps"), 18)),
+            "mpc_temp_amb":       self._num(_eid("mpc_temp_amb"),   20.0),
+            "mpc_rh_amb":         self._num(_eid("mpc_rh_amb"),     55.0),
+            "mpc_a_heater":       self._num(_eid("mpc_a_heater"),    0.423),
+            "mpc_a_exhaust":      self._num(_eid("mpc_a_exhaust"),  -0.082),
+            "mpc_a_passive":      self._num(_eid("mpc_a_passive"),   0.008),
+            "mpc_a_bias":         self._num(_eid("mpc_a_bias"),      0.057),
+            "mpc_b_exhaust":      self._num(_eid("mpc_b_exhaust"),  -1.196),
+            "mpc_b_passive":      self._num(_eid("mpc_b_passive"),   0.006),
+            "mpc_b_bias":         self._num(_eid("mpc_b_bias"),      0.556),
+            "mpc_w_vpd":          self._num(_eid("mpc_w_vpd"),       5.0),
+            "mpc_w_temp":         self._num(_eid("mpc_w_temp"),      2.0),
+            "mpc_w_rh":           self._num(_eid("mpc_w_rh"),        1.0),
+            "mpc_w_switch":       self._num(_eid("mpc_w_switch"),    0.5),
             "dewpoint_margin_c":  self._num(_eid("dewpoint_margin_c"),  1.0),
             "heater_hold_s":      self._num(_eid("heater_hold_s"),      60.0),
             "exhaust_hold_s":     self._num(_eid("exhaust_hold_s"),     45.0),
@@ -1272,6 +1483,12 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "debug_heater_max_run_s": 0.0,
             "debug_heater_lockout":   "inactive",
             "debug_ramped_target_temp_c": None,
+            "debug_mpc_horizon":    0,
+            "debug_mpc_score":      None,
+            "debug_mpc_pred_temp":  None,
+            "debug_mpc_pred_rh":    None,
+            "debug_mpc_pred_vpd":   None,
+            "debug_mpc_plan":       "n/a",
         }
 
         # --- Target conflict detection ---
