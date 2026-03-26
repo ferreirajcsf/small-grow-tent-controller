@@ -26,7 +26,9 @@
           "canopy_temp": "Canopy temperature sensor",
           "top_temp": "Top temperature sensor",
           "canopy_rh": "Canopy humidity sensor",
-          "top_rh": "Top humidity sensor"
+          "top_rh": "Top humidity sensor",
+          "ambient_temp": "Lung room temperature sensor (optional \u2014 used by MPC)",
+          "ambient_rh": "Lung room humidity sensor (optional \u2014 used by MPC)"
         }
       }
     }
@@ -58,7 +60,9 @@
           "canopy_temp": "Canopy temperature sensor",
           "top_temp": "Top temperature sensor",
           "canopy_rh": "Canopy humidity sensor",
-          "top_rh": "Top humidity sensor"
+          "top_rh": "Top humidity sensor",
+          "ambient_temp": "Lung room temperature sensor (optional \u2014 used by MPC)",
+          "ambient_rh": "Lung room humidity sensor (optional \u2014 used by MPC)"
         }
       }
     }

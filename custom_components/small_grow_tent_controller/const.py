@@ -19,10 +19,12 @@ CONF_USE_HEATER       = "use_heater"
 CONF_USE_HUMIDIFIER   = "use_humidifier"
 CONF_USE_DEHUMIDIFIER = "use_dehumidifier"
 
-CONF_CANOPY_TEMP = "canopy_temp"
-CONF_TOP_TEMP    = "top_temp"
-CONF_CANOPY_RH   = "canopy_rh"
-CONF_TOP_RH      = "top_rh"
+CONF_CANOPY_TEMP   = "canopy_temp"
+CONF_TOP_TEMP      = "top_temp"
+CONF_CANOPY_RH     = "canopy_rh"
+CONF_TOP_RH        = "top_rh"
+CONF_AMBIENT_TEMP  = "ambient_temp"   # optional lung room temp sensor
+CONF_AMBIENT_RH    = "ambient_rh"     # optional lung room RH sensor
 
 # Defaults — empty so the config flow doesn't pre-fill with someone else's entity IDs
 DEFAULTS = {
@@ -36,6 +38,8 @@ DEFAULTS = {
     CONF_TOP_TEMP:            "",
     CONF_CANOPY_RH:           "",
     CONF_TOP_RH:              "",
+    CONF_AMBIENT_TEMP:        "",   # optional
+    CONF_AMBIENT_RH:          "",   # optional
 }
 
 # Which devices are enabled by default in the UI

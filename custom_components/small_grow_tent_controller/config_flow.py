@@ -28,12 +28,21 @@ from .const import (
     CONF_TOP_TEMP,
     CONF_CANOPY_RH,
     CONF_TOP_RH,
+    CONF_AMBIENT_TEMP,
+    CONF_AMBIENT_RH,
 )
 
 
 def _entity_selector() -> selector.EntitySelector:
     return selector.EntitySelector(
         selector.EntitySelectorConfig(domain=["switch", "sensor"])
+    )
+
+
+def _sensor_selector() -> selector.EntitySelector:
+    """Sensor-only selector for ambient/environment entities."""
+    return selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=["sensor"])
     )
 
 
@@ -44,7 +53,7 @@ def _bool_selector() -> selector.BooleanSelector:
 class SmallGrowTentConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Small Grow Tent Controller."""
 
-    VERSION = 3
+    VERSION = 4
 
     def __init__(self) -> None:
         self._device_enable: dict[str, bool] = {}
@@ -74,6 +83,8 @@ class SmallGrowTentConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_TOP_TEMP, default=DEFAULTS[CONF_TOP_TEMP]): _entity_selector(),
             vol.Required(CONF_CANOPY_RH, default=DEFAULTS[CONF_CANOPY_RH]): _entity_selector(),
             vol.Required(CONF_TOP_RH, default=DEFAULTS[CONF_TOP_RH]): _entity_selector(),
+            vol.Optional(CONF_AMBIENT_TEMP, default=DEFAULTS[CONF_AMBIENT_TEMP]): _sensor_selector(),
+            vol.Optional(CONF_AMBIENT_RH, default=DEFAULTS[CONF_AMBIENT_RH]): _sensor_selector(),
         }
 
         if self._device_enable.get(CONF_USE_LIGHT, True):
@@ -130,6 +141,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required(CONF_TOP_TEMP, default=defaults.get(CONF_TOP_TEMP, DEFAULTS[CONF_TOP_TEMP])): _entity_selector(),
             vol.Required(CONF_CANOPY_RH, default=defaults.get(CONF_CANOPY_RH, DEFAULTS[CONF_CANOPY_RH])): _entity_selector(),
             vol.Required(CONF_TOP_RH, default=defaults.get(CONF_TOP_RH, DEFAULTS[CONF_TOP_RH])): _entity_selector(),
+            vol.Optional(CONF_AMBIENT_TEMP, default=defaults.get(CONF_AMBIENT_TEMP, DEFAULTS[CONF_AMBIENT_TEMP])): _sensor_selector(),
+            vol.Optional(CONF_AMBIENT_RH, default=defaults.get(CONF_AMBIENT_RH, DEFAULTS[CONF_AMBIENT_RH])): _sensor_selector(),
         }
 
         if defaults.get(CONF_USE_LIGHT, True):

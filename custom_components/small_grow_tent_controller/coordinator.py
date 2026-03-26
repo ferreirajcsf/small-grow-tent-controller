@@ -49,6 +49,8 @@ from .const import (
     CONF_EXHAUST_SAFETY_OVERRIDE,
     CONF_EXHAUST_SAFETY_MAX_TEMP_C,
     CONF_EXHAUST_SAFETY_MAX_RH,
+    CONF_AMBIENT_TEMP,
+    CONF_AMBIENT_RH,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -1631,6 +1633,22 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "debug_mpc_pred_vpd":   None,
             "debug_mpc_plan":       "n/a",
         }
+
+        # --- Ambient sensor override for MPC ---
+        # If ambient temp/RH sensor entities are configured in the integration
+        # settings, read their current values and override the static MPC slider
+        # values. This keeps the model's ambient estimate current automatically
+        # without needing a separate HA automation.
+        ambient_temp_eid = self._get_option(CONF_AMBIENT_TEMP)
+        ambient_rh_eid   = self._get_option(CONF_AMBIENT_RH)
+        if ambient_temp_eid:
+            val = self._get_state_float(ambient_temp_eid)
+            if val is not None:
+                data["mpc_temp_amb"] = val
+        if ambient_rh_eid:
+            val = self._get_state_float(ambient_rh_eid)
+            if val is not None:
+                data["mpc_rh_amb"] = val
 
         # --- Target conflict detection ---
         # Compute the VPD that would result from target_temp + target_rh

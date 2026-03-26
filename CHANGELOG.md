@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.45] - 2026-03-26
+
+### Added
+
+- **Ambient sensor integration** — the integration configuration now includes two optional entity fields: **Lung room temperature sensor** and **Lung room humidity sensor**. When set, the MPC controller reads these sensors every poll cycle and uses their current values as the ambient temperature and RH estimates, replacing the static `MPC Ambient Temp` and `MPC Ambient RH` number sliders. The sliders remain as fallback values when sensors are unavailable or not configured.
+
+  This replaces the need for a separate HA automation to keep the ambient values in sync. To configure, go to **Settings → Devices & Services → Small Grow Tent Controller → Configure** and select your lung room sensors in the new optional fields.
+
+  The `MPC Ambient Temp` and `MPC Ambient RH` number entities remain visible as diagnostic indicators — when sensors are configured they reflect the live sensor readings used by the model.
+
+### ⚠️ Config Entry Migration
+
+The config flow version has been bumped from 3 to 4. Existing installations will continue to work without reconfiguration — the new fields are optional and default to empty (disabled). To add your lung room sensors, go to **Settings → Devices & Services → Small Grow Tent Controller → Configure**.
+
+---
+
 ## [0.1.44] - 2026-03-26
 
 ### Added
