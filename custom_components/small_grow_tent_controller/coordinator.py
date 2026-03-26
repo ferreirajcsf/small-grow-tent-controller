@@ -716,6 +716,71 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
               + ctx.mpc_w_rh   * rh_err
               + switch_penalty)
 
+    @staticmethod
+    def _mpc_optimise(
+        temp0: float, rh0: float,
+        heater_on: bool, exhaust_on: bool,
+        target_temp: float, target_rh: float, target_vpd: float,
+        horizon: int,
+        leaf_offset: float,
+        mpc_temp_amb: float, mpc_rh_amb: float,
+        mpc_a_heater: float, mpc_a_exhaust: float,
+        mpc_a_passive: float, mpc_a_bias: float,
+        mpc_b_exhaust: float, mpc_b_passive: float, mpc_b_bias: float,
+        mpc_w_vpd: float, mpc_w_temp: float, mpc_w_rh: float, mpc_w_switch: float,
+    ) -> tuple[int, int, float, list, float, float, float]:
+        """Pure CPU work — runs in a thread pool, must not touch HA state.
+
+        Returns (h_want, e_want, best_score, best_actions, pred_temp, pred_rh, pred_vpd).
+        """
+        import math
+
+        def sim(actions):
+            temp = temp0
+            rh   = rh0
+            for h, e in actions:
+                temp += mpc_a_heater * h + mpc_a_exhaust * e + mpc_a_passive * (mpc_temp_amb - temp) + mpc_a_bias
+                rh   += mpc_b_exhaust * e + mpc_b_passive * (mpc_rh_amb - rh)   + mpc_b_bias
+                temp = max(0.0, min(60.0, temp))
+                rh   = max(0.1, min(99.9, rh))
+            return temp, rh
+
+        def vpd_leaf(air_t, rh_pct, leaf_t):
+            avp = (rh_pct / 100.0) * 0.6108 * math.exp(17.27 * air_t / (air_t + 237.3))
+            return max(0.0, 0.6108 * math.exp(17.27 * leaf_t / (leaf_t + 237.3)) - avp)
+
+        best_score   = float("inf")
+        best_actions = [(0, 0)] * horizon
+
+        for combo_idx in range(4 ** horizon):
+            actions = []
+            idx = combo_idx
+            for _ in range(horizon):
+                bit = idx % 4
+                idx //= 4
+                actions.append((1 if bit >= 2 else 0, 1 if bit % 2 == 1 else 0))
+
+            tf, rf = sim(actions)
+            lf = tf + leaf_offset
+            pv = vpd_leaf(tf, rf, lf)
+
+            first_h, first_e = actions[0]
+            switch_pen = (abs(first_h - int(heater_on)) + abs(first_e - int(exhaust_on))) * mpc_w_switch
+            score = (mpc_w_vpd  * (pv - target_vpd)  ** 2
+                   + mpc_w_temp * (tf - target_temp)  ** 2
+                   + mpc_w_rh   * (rf - target_rh)    ** 2
+                   + switch_pen)
+
+            if score < best_score:
+                best_score   = score
+                best_actions = actions
+
+        tf, rf = sim(best_actions)
+        lf = tf + leaf_offset
+        pv = vpd_leaf(tf, rf, lf)
+        h_want, e_want = best_actions[0]
+        return h_want, e_want, best_score, best_actions, tf, rf, pv
+
     async def _apply_mpc_day(self, ctx: "_Ctx") -> None:
         """MPC day control.
 
@@ -725,8 +790,9 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         cost function combining VPD error, temperature error, RH error, and
         a device switching penalty.
 
-        Only the first step of the optimal sequence is executed. Hard limits
-        and hold times are still enforced — MPC cannot override them.
+        The combinatorial search runs in a thread-pool executor so it never
+        blocks the HA event loop. Only the first step of the optimal sequence
+        is executed. Hard limits and hold times are still enforced.
         """
         ctx.data["control_mode"] = "mpc"
 
@@ -734,49 +800,31 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         target_vpd  = float(ctx.data.get("vpd_target_kpa",  STAGE_TARGET_VPD_KPA.get(ctx.stage, 1.00)))
         target_temp = float(ctx.data.get("target_temp_c",   STAGE_TARGET_TEMP_C.get(ctx.stage, 25.0)))
         target_rh   = float(ctx.data.get("target_rh",       STAGE_TARGET_RH.get(ctx.stage, 55.0)))
-        horizon     = max(1, int(ctx.mpc_horizon))
 
-        # Current state
-        temp0 = ctx.avg_temp
-        rh0   = ctx.avg_rh
-
-        # Enumerate all binary action sequences over the horizon
-        # For a 2-device (heater, exhaust) horizon of N steps: 4^N combinations
-        # Cap at horizon=10 to limit to 4^10=1M — in practice horizon≤6 (4^6=4096) is fast
-        if horizon > 10:
-            horizon = 10
-            _LOGGER.warning("%s: MPC horizon capped at 10 steps to limit computation",
-                            self.entry.title)
-
-        best_score   = float("inf")
-        best_actions = [(0, 0)] * horizon
-
-        # Build all combinations using itertools-style enumeration
-        n_combos = 4 ** horizon
-        for combo_idx in range(n_combos):
-            actions = []
-            idx = combo_idx
-            for _ in range(horizon):
-                bit = idx % 4
-                idx //= 4
-                h = 1 if bit >= 2 else 0
-                e = 1 if bit % 2 == 1 else 0
-                actions.append((h, e))
-
-            temp_final, rh_final = self._mpc_simulate(temp0, rh0, actions, ctx)
-            score = self._mpc_score(
-                temp_final, rh_final,
-                target_temp, target_rh, target_vpd,
-                actions,
-                ctx.heater_on, ctx.exhaust_on,
-                ctx,
+        # Hard cap horizon at 6: 4^6 = 4096 combos, runs in <1ms in a thread
+        horizon = max(1, min(6, int(ctx.mpc_horizon)))
+        if ctx.mpc_horizon > 6:
+            _LOGGER.debug(
+                "%s: MPC horizon capped at 6 (configured %d) — 4^N grows exponentially",
+                self.entry.title, ctx.mpc_horizon,
             )
-            if score < best_score:
-                best_score   = score
-                best_actions = actions
 
-        # Execute first step of optimal plan
-        h_want, e_want = best_actions[0]
+        leaf_offset = float(ctx.data.get("leaf_temp_offset_c", -1.5))
+
+        # Run the CPU-intensive optimisation off the event loop
+        (h_want, e_want, best_score, best_actions,
+         temp_pred, rh_pred, vpd_pred) = await self.hass.async_add_executor_job(
+            self._mpc_optimise,
+            ctx.avg_temp, ctx.avg_rh,
+            ctx.heater_on, ctx.exhaust_on,
+            target_temp, target_rh, target_vpd,
+            horizon, leaf_offset,
+            ctx.mpc_temp_amb, ctx.mpc_rh_amb,
+            ctx.mpc_a_heater, ctx.mpc_a_exhaust,
+            ctx.mpc_a_passive, ctx.mpc_a_bias,
+            ctx.mpc_b_exhaust, ctx.mpc_b_passive, ctx.mpc_b_bias,
+            ctx.mpc_w_vpd, ctx.mpc_w_temp, ctx.mpc_w_rh, ctx.mpc_w_switch,
+        )
 
         # Predict where we'll be after horizon steps
         temp_pred, rh_pred = self._mpc_simulate(temp0, rh0, best_actions, ctx)

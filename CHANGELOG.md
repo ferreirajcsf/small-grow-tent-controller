@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.42] - 2026-03-26
+
+### Fixed
+
+- **MPC no longer freezes Home Assistant** — the combinatorial optimisation in v0.1.41 ran synchronously on the HA event loop. With the default horizon of 18 steps that meant evaluating 4^18 ≈ 68 billion combinations every 10 seconds, blocking HA entirely.
+
+  Two changes fix this:
+  - The optimisation now runs in a **thread-pool executor** (`async_add_executor_job`) so it never touches the event loop regardless of horizon length.
+  - The **horizon is hard-capped at 6 steps** (4^6 = 4,096 combinations, completes in <1ms). The number entity range is now 1–6 with a default of 3. A horizon of 3–6 steps (30–60 seconds) is more than sufficient for a tent with a ~21-minute thermal time constant.
+
+---
+
 ## [0.1.41] - 2026-03-26
 
 ### Added

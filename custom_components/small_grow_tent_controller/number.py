@@ -46,7 +46,7 @@ NUMBERS = [
     ("night_target_rh",         "Night Target Humidity",        10.0, 95.0,  0.5,  55.0,  "%"),
     ("temp_ramp_rate_c_per_min","Temp Ramp Rate",               0.0,  5.0,   0.1,  1.0,   "°C/min"),
     # MPC model parameters
-    ("mpc_horizon_steps",       "MPC Horizon Steps",            3,    60,    1,    18,    "steps"),
+    ("mpc_horizon_steps",       "MPC Horizon Steps",            1,    6,     1,    3,     "steps"),
     ("mpc_temp_amb",            "MPC Ambient Temp",             5.0,  35.0,  0.1,  20.0,  "°C"),
     ("mpc_rh_amb",              "MPC Ambient RH",               10.0, 95.0,  0.5,  55.0,  "%"),
     ("mpc_a_heater",            "MPC a_heater",                 -2.0, 2.0,   0.001, 0.423, "°C/step"),
