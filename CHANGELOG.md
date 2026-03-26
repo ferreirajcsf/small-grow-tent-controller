@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.44] - 2026-03-26
+
+### Added
+
+- **Night Mode: MPC** — a new `MPC` option in the Night Mode selector runs Model Predictive Control during the light-off window using the night targets (Night VPD Target, Night Target Temperature, Night Target Humidity). Behaviour mirrors the day MPC mode with two night-specific additions always enforced on top:
+  - **Dew-point floor** — if MPC leaves the heater off but temperature is at or below dew point + margin, the heater turns on regardless to prevent condensation.
+  - **Stage exhaust night profile** — the per-stage exhaust setting (on/auto) is applied on top of the MPC exhaust decision, consistent with all other night modes.
+  - Humidity devices fall back to simple RH deadband control (same as day MPC).
+  - All MPC parameters (model coefficients, weights, horizon) are shared with day MPC.
+  - Hard limits still fire before MPC, same as all other modes.
+
+---
+
 ## [0.1.43] - 2026-03-26
 
 ### Fixed

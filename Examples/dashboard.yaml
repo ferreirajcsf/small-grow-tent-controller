@@ -68,6 +68,7 @@ views:
                         'night_on_dewpoint_protect':'Night: Dew (ON)',
                         'night_auto_dewpoint_protect':'Night: Dew (AUTO)',
                         'mpc':'MPC',
+                        'night_mpc':'Night: MPC',
                         'night_vpd_chase':'Night: VPD Chase',
                         'night_vpd_chase_no_heater':'Night: VPD Chase (no heater)',
                         'hard_limit:temp_below_min':'Limit: Temp low','hard_limit:temp_above_max':'Limit: Temp high',

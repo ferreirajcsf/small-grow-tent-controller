@@ -22,6 +22,7 @@ from .const import (
     CONF_NIGHT_MODE,
     NIGHT_MODE_VPD,
     NIGHT_MODE_VPD_NO_HEATER,
+    NIGHT_MODE_MPC,
     EXHAUST_MODE_DAY_ON,
     EXHAUST_MODE_NIGHT_ON,
     CONF_DAY_MODE,
@@ -859,6 +860,101 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._dehumidifier_off(ctx, "mpc: rh in band")
 
         # ------------------------------------------------------------------ #
+    #  Night MPC mode                                                      #
+    # ------------------------------------------------------------------ #
+
+    async def _apply_night_mpc(self, ctx: _Ctx) -> None:
+        """MPC control at night using night targets with a dew-point floor.
+
+        Runs the same MPC optimiser as daytime but uses night VPD, temperature,
+        and RH targets. After the plan executes, a dew-point floor is enforced:
+        if the MPC left the heater off but temperature is at or below
+        dew + margin, the heater turns on regardless.
+
+        The stage night exhaust profile (on/auto) is applied on top of the
+        MPC exhaust decision, consistent with other night modes.
+        """
+        profile          = STAGE_NIGHT_PROFILE.get(ctx.stage, {"exhaust_mode": "on", "dew_margin_add_c": 0.0})
+        exhaust_mode     = profile.get("exhaust_mode", "on")
+        dew_margin_night = ctx.dew_margin + float(profile.get("dew_margin_add_c", 0.0))
+        dew_floor        = ctx.dew + dew_margin_night
+
+        ctx.data["control_mode"] = "night_mpc"
+
+        # Hard cap horizon — same as day MPC
+        horizon = max(1, min(6, int(ctx.mpc_horizon)))
+        leaf_offset = float(ctx.data.get("leaf_temp_offset_c", -1.5))
+
+        # Run optimisation in thread executor using night targets
+        (h_want, e_want, best_score, best_actions,
+         temp_pred, rh_pred, vpd_pred) = await self.hass.async_add_executor_job(
+            self._mpc_optimise,
+            ctx.avg_temp, ctx.avg_rh,
+            ctx.heater_on, ctx.exhaust_on,
+            ctx.night_target_temp, ctx.night_target_rh, ctx.night_vpd_target,
+            horizon, leaf_offset,
+            ctx.mpc_temp_amb, ctx.mpc_rh_amb,
+            ctx.mpc_a_heater, ctx.mpc_a_exhaust,
+            ctx.mpc_a_passive, ctx.mpc_a_bias,
+            ctx.mpc_b_exhaust, ctx.mpc_b_passive, ctx.mpc_b_bias,
+            ctx.mpc_w_vpd, ctx.mpc_w_temp, ctx.mpc_w_rh, ctx.mpc_w_switch,
+        )
+
+        ctx.data["debug_mpc_horizon"]   = horizon
+        ctx.data["debug_mpc_score"]     = round(best_score, 4)
+        ctx.data["debug_mpc_pred_temp"] = round(temp_pred, 2)
+        ctx.data["debug_mpc_pred_rh"]   = round(rh_pred, 2)
+        ctx.data["debug_mpc_pred_vpd"]  = round(vpd_pred, 3)
+        ctx.data["debug_mpc_plan"]      = str(best_actions[:3])
+
+        # Apply heater decision — but enforce dew floor unconditionally
+        if h_want == 1:
+            await self._heater_on_if_allowed(ctx, f"night_mpc: plan={best_actions[:2]}")
+        else:
+            await self._heater_off(ctx, f"night_mpc: plan={best_actions[:2]}")
+
+        # Dew-point floor: override heater if MPC left it off but we are
+        # at or below the dew point + margin
+        if not ctx.heater_on and ctx.avg_temp <= dew_floor:
+            ctx.data["debug_heater_reason"] = (
+                f"night_mpc: dew floor override "
+                f"(avg={ctx.avg_temp:.1f}°C <= floor={dew_floor:.1f}°C)"
+            )
+            await self._heater_on_if_allowed(
+                ctx, f"night MPC: dew floor {dew_floor:.1f}°C"
+            )
+
+        # Apply exhaust decision from MPC
+        if e_want == 1:
+            await self._exhaust_on_if_off(ctx, f"night_mpc: plan={best_actions[:2]}")
+        else:
+            await self._exhaust_off_if_on(ctx, f"night_mpc: plan={best_actions[:2]}")
+
+        # Stage exhaust night profile applied on top — overrides MPC exhaust
+        # if the stage profile requires it (consistent with other night modes)
+        if exhaust_mode == "on":
+            ctx.data["debug_exhaust_reason"] = (
+                ctx.data.get("debug_exhaust_reason", "") + " [night profile: force_on]"
+            )
+            await self._exhaust_on_if_off(ctx, "night MPC: profile=on")
+        elif exhaust_mode == "auto":
+            want = ctx.avg_rh > ctx.max_rh or ctx.avg_temp > ctx.max_temp
+            if not want:
+                await self._exhaust_off_if_on(ctx, "night MPC: profile=auto, conditions_ok")
+
+        # Humidity: simple RH deadband fallback (same as day MPC)
+        deadband_rh = 2.0
+        if ctx.avg_rh < (ctx.night_target_rh - deadband_rh):
+            await self._humidifier_on(ctx, "night_mpc: rh below target")
+            await self._dehumidifier_off(ctx, "night_mpc: rh below target")
+        elif ctx.avg_rh > (ctx.night_target_rh + deadband_rh):
+            await self._humidifier_off(ctx, "night_mpc: rh above target")
+            await self._reduce_humidity(ctx, "night_mpc: rh above target")
+        else:
+            await self._humidifier_off(ctx, "night_mpc: rh in band")
+            await self._dehumidifier_off(ctx, "night_mpc: rh in band")
+
+        # ------------------------------------------------------------------ #
     #  Day hard limits                                                     #
     # ------------------------------------------------------------------ #
 
@@ -1365,11 +1461,13 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if drying:
             await self._apply_drying_mode(ctx)
         elif not is_day:
-            if ctx.night_mode in (NIGHT_MODE_VPD, NIGHT_MODE_VPD_NO_HEATER):
+            if ctx.night_mode == NIGHT_MODE_MPC:
+                # MPC night mode — hard limits still take priority
+                hard_limit_active = await self._apply_day_hard_limits(ctx)
+                if not hard_limit_active:
+                    await self._apply_night_mpc(ctx)
+            elif ctx.night_mode in (NIGHT_MODE_VPD, NIGHT_MODE_VPD_NO_HEATER):
                 # Hard limits take priority over night VPD chase, same as day mode.
-                # Without this check, a breach of max RH or max temp at night
-                # would be ignored — VPD chase would continue trying to chase
-                # its target regardless of safety limits being exceeded.
                 hard_limit_active = await self._apply_day_hard_limits(ctx)
                 if not hard_limit_active:
                     await self._apply_night_vpd_chase(ctx)

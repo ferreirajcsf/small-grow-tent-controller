@@ -96,7 +96,8 @@ CONF_NIGHT_MODE          = "night_mode"
 NIGHT_MODE_DEW           = "Dew Protection"        # classic pulse-to-dew behaviour
 NIGHT_MODE_VPD           = "VPD Chase"              # full VPD chase + dew floor
 NIGHT_MODE_VPD_NO_HEATER = "VPD Chase (No Heater)" # VPD chase + dew floor, heater excluded from chasing
-NIGHT_MODE_OPTIONS       = [NIGHT_MODE_DEW, NIGHT_MODE_VPD, NIGHT_MODE_VPD_NO_HEATER]
+NIGHT_MODE_MPC           = "MPC"                    # MPC using night targets + dew floor
+NIGHT_MODE_OPTIONS       = [NIGHT_MODE_DEW, NIGHT_MODE_VPD, NIGHT_MODE_VPD_NO_HEATER, NIGHT_MODE_MPC]
 
 # Night VPD Chase switch unique-id suffix
 CONF_NIGHT_VPD_CHASE = "night_vpd_chase"
