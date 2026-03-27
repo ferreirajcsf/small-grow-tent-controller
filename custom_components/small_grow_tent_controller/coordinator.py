@@ -1644,8 +1644,9 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # settings, read their current values and override the static MPC slider
         # values. This keeps the model's ambient estimate current automatically
         # without needing a separate HA automation.
-        ambient_temp_eid = self._get_option(CONF_AMBIENT_TEMP)
-        ambient_rh_eid   = self._get_option(CONF_AMBIENT_RH)
+        # `or None` converts empty string (unconfigured) to None safely
+        ambient_temp_eid = self._get_option(CONF_AMBIENT_TEMP) or None
+        ambient_rh_eid   = self._get_option(CONF_AMBIENT_RH)   or None
         if ambient_temp_eid:
             val = self._get_state_float(ambient_temp_eid)
             if val is not None:

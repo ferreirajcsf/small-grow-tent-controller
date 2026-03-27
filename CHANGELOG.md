@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.49] - 2026-03-27
+
+### Fixed
+
+- **Options flow now receives `config_entry` explicitly** — in recent HA versions `OptionsFlow` no longer automatically injects `self.config_entry`. The `OptionsFlowHandler` was constructed with no arguments and relied on HA injecting the config entry, which silently failed — causing the Configure screen to open with empty defaults and potentially no fields rendered at all. The handler now receives `config_entry` explicitly from `async_get_options_flow` and stores it in `__init__`. This is the root cause of the ambient sensor fields not appearing.
+
+- **Ambient entity ID empty string handled safely** — `_get_option(CONF_AMBIENT_TEMP)` returns `""` when the field is not configured. The coordinator now uses `or None` to convert empty strings to `None` before checking, preventing any possibility of passing an empty string to `_get_state_float`.
+
+---
+
 ## [0.1.48] - 2026-03-27
 
 ### Fixed

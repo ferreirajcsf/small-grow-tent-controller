@@ -126,13 +126,14 @@ class SmallGrowTentConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     def async_get_options_flow(
         config_entry: config_entries.ConfigEntry,
     ) -> config_entries.OptionsFlow:
-        return OptionsFlowHandler()
+        return OptionsFlowHandler(config_entry)
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
     """Options flow handler for Small Grow Tent Controller."""
 
-    def __init__(self) -> None:
+    def __init__(self, config_entry: config_entries.ConfigEntry) -> None:
+        self.config_entry = config_entry
         self._device_enable: dict[str, bool] = {}
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
