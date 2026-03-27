@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.50] - 2026-03-27
+
+### Fixed
+
+- **Options flow 500 error on Configure** — v0.1.49 attempted to store `config_entry` in `OptionsFlowHandler.__init__` via `self.config_entry = config_entry`, but `config_entries.OptionsFlow` already defines `config_entry` as a read-only property in recent HA versions, causing an `AttributeError` and a 500 error when clicking the cog wheel. The fix is to revert to a no-argument `__init__` and rely on the base class to provide `self.config_entry` automatically, which is how HA intends it to work. The existing uses of `self.config_entry.data` and `self.config_entry.options` throughout the flow continue to work correctly via the base class property.
+
+---
+
 ## [0.1.49] - 2026-03-27
 
 ### Fixed
