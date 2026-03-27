@@ -64,10 +64,29 @@ During the lights-off window the controller can operate in one of two modes, sel
 | **Dew Protection** *(default)* | Heater pulses to stay above dew point + margin. Humidifier off. Dehumidifier if RH too high. Exhaust follows stage night profile. |
 | **VPD Chase** | Full VPD chase at night using night targets (VPD, temp, RH). Dew-point protection always active as a hard floor. Stage exhaust night profile still applied. |
 | **VPD Chase (No Heater)** | Same as VPD Chase but heater is excluded from chasing VPD. Dew-point protection still fires unconditionally. |
+| **MPC** | Model Predictive Control using night targets and the identified thermal model. Dew-point floor and stage exhaust profile still enforced. |
 
-**VPD Chase (No Heater)**
+**Day mode options**
 
-The Night Mode selector includes a `VPD Chase (No Heater)` option. This runs the same VPD chase logic as the standard VPD Chase night mode, but the heater is excluded from chasing VPD — only humidity control and the exhaust fan work toward the VPD target. Dew-point protection still fires unconditionally if temperature drops to dew point + margin.
+During the lights-on window the controller can operate in one of three modes, selectable from the Grow Tent section of the dashboard:
+
+| Mode | Behaviour |
+|---|---|
+| **VPD Chase** *(default)* | Actively chases VPD, temperature, and RH targets using all available devices. |
+| **MPC** | Model Predictive Control — uses an identified first-order thermal model to plan heater and exhaust actions several steps ahead, reducing overshoot and compensating for actuator lag. |
+| **Limits Only** | Only hard temperature and humidity limits are enforced. Devices are left neutral inside the limits. |
+
+**MPC (Model Predictive Control)**
+
+Available for both day and night modes. At each poll cycle the MPC evaluates all combinations of heater/exhaust states over a configurable planning horizon (1–6 steps, default 3), simulates tent temperature and RH forward using a first-order thermal model, and selects the sequence that minimises a weighted cost of VPD error, temperature error, RH error, and unnecessary switching. Only the first step of the optimal plan is executed.
+
+Model parameters are identified from your real sensor history using the included `mpc_identify.py` script. The ambient temperature and RH used by the model can be kept current automatically by assigning a lung room sensor in **Settings → Devices & Services → Small Grow Tent Controller → Configure**.
+
+Key diagnostic sensors (hidden by default, enable in **Settings → Entities**):
+- `debug_mpc_pred_temp` — predicted temperature at end of horizon
+- `debug_mpc_pred_vpd` — predicted VPD at end of horizon
+- `debug_mpc_plan` — first 3 steps of the chosen action sequence
+- `debug_mpc_score` — cost of the chosen plan (lower = better)
 
 **Grow Journal**
 - Built-in timestamped grow log — record observations, training events, nutrient changes, anything
@@ -100,7 +119,8 @@ Once set up, the integration creates a full set of entities grouped under a sing
 - Sensors for average temperature, humidity, VPD, dew point, leaf temperature, control mode, and last action
 - Switches for the controller, VPD Chase, and exhaust safety override
 - Number sliders for all limits, targets, deadbands, and hold times
-- Select entities for growth stage, night mode, and per-device modes
+- Select entities for growth stage, day mode, night mode, and per-device modes
+- Number sliders for MPC model parameters (coefficients, cost weights, horizon steps)
 - Time helpers for your light on/off schedule
 - A button to reset all devices to Auto
 
@@ -155,6 +175,8 @@ The second screen asks you to pick the HA entity for each sensor and device swit
 
 After setup, all entities appear under a single device card named after your config entry. If you run multiple tents, add the integration again and give each entry a different name (e.g. "Veg Tent", "Flower Tent").
 
+To assign a lung room sensor for MPC ambient tracking, go to **Settings → Devices & Services → Small Grow Tent Controller → Configure** after the integration is set up.
+
 ### Step 4 — Set your targets
 
 Once the integration is running, tune it from the entity controls in your dashboard or the device page:
@@ -165,12 +187,17 @@ Once the integration is running, tune it from the entity controls in your dashbo
 | **VPD Target** | Target VPD for the current stage — adjustable per stage, resets on stage change |
 | **Target Temperature** | The temperature the controller chases during VPD chase mode |
 | **Target Humidity** | The humidity the controller nudges toward when VPD is in band |
-| **VPD Chase** | When ON (default), actively chases VPD. When OFF, only hard limits are enforced |
-| **Night Mode** | Controls night-time strategy: Dew Protection (default), VPD Chase, or VPD Chase (No Heater) |
+| **Day Mode** | Controls daytime strategy: VPD Chase (default), MPC, or Limits Only |
+| **VPD Chase** | When ON (default), actively chases VPD in VPD Chase day mode. No effect when Day Mode is MPC or Limits Only |
+| **Night Mode** | Controls night-time strategy: Dew Protection (default), VPD Chase, VPD Chase (No Heater), or MPC |
 | **Night VPD Target** | VPD target used during the light-off window — auto-resets on stage change |
 | **Night Target Temperature** | Temperature target during the light-off window — defaults to day temp − 5°C |
 | **Night Target Humidity** | RH target during the light-off window — auto-calculated for congruence with night temp + night VPD |
 | **Temp Ramp Rate** | Maximum rate of change for the effective temperature target (°C/min). Prevents abrupt jumps at day/night transitions. 0 = disabled (default 1.0) |
+| **MPC Horizon Steps** | How many steps ahead the MPC plans (1–6, default 3). Higher = more lookahead but exponentially more computation. |
+| **MPC Ambient Temp / RH** | The lung room conditions used as the model's ambient estimate. Updated automatically if a lung room sensor is configured in Settings → Configure. |
+| **MPC model coefficients** | a_heater, a_exhaust, a_passive, a_bias, b_exhaust, b_passive, b_bias — identified from your sensor history using `mpc_identify.py`. |
+| **MPC cost weights** | Weight VPD, Weight Temp, Weight RH, Switch Penalty — tune these to adjust how aggressively the MPC prioritises each objective. |
 | **Min / Max Temperature** | Hard limits — heater or exhaust kicks in if breached |
 | **Min / Max Humidity** | Hard limits for RH |
 | **VPD Deadband** | How far VPD can drift before the controller acts (default 0.07 kPa) |
@@ -223,6 +250,9 @@ Full VPD chase logic runs at night using the **night targets** (Night VPD Target
 
 If **Night Mode** is set to `VPD Chase (No Heater)`, the heater is excluded from VPD chasing but the dew-point floor still fires unconditionally.
 
+**MPC**
+The MPC optimiser runs using night targets (Night VPD Target, Night Target Temperature, Night Target Humidity). The dew-point floor and stage exhaust night profile are enforced on top of the MPC plan, same as VPD Chase night mode.
+
 ### 7. Day mode — hard limits
 During the lights-on period, if temperature or humidity breach their min/max limits, the controller acts immediately:
 
@@ -238,10 +268,33 @@ If the **Exhaust Safety** is enabled and its thresholds are exceeded, any attemp
 ### 8. Temperature ramp
 When **Temp Ramp Rate** is greater than 0, the controller limits how fast the effective temperature target can change. At the day→night and night→day boundaries, rather than jumping immediately to the new target, the effective target slides toward it at no more than the configured °C/min. This applies in both directions and to all control modes that use a temperature target. The heater safety trip runs independently and is unaffected.
 
-### 9. Day mode — VPD chase
-When everything is within limits and the **VPD Chase** switch is ON, the controller fine-tunes conditions by chasing the stage's VPD target within the configured deadband, using the heater, exhaust, humidifier, and dehumidifier as needed.
+### 9. Day mode — VPD Chase / MPC / Limits Only
+When everything is within limits, the **Day Mode** selector determines what runs:
 
-When VPD Chase is OFF, the controller operates in **limits-only mode**: devices are left neutral as long as temp and RH stay within their min/max limits. Useful for simpler thermostat/humidistat style control.
+**VPD Chase** — the controller chases the stage's VPD target within the configured deadband using the heater, exhaust, humidifier, and dehumidifier. The VPD Chase switch must also be ON (default).
+
+**MPC** — the MPC optimiser runs in a background thread, evaluates all combinations of heater/exhaust states over the planning horizon, and executes the first step of the lowest-cost sequence. Humidity devices fall back to simple RH deadband control.
+
+**Limits Only** — devices are left neutral as long as temp and RH stay within their min/max limits. Useful for simpler thermostat/humidistat style control.
+
+---
+
+## MPC Model Identification
+
+To get the best results from MPC, run `mpc_identify.py` on your real sensor history to fit the thermal model to your specific tent:
+
+```bash
+# Install dependencies
+pip install numpy scipy pandas matplotlib
+
+# Edit the CONFIGURATION section in the script with your entity IDs and DB path
+# then run:
+python3 mpc_identify.py
+```
+
+The script reads 7 days of state history directly from your HA SQLite database (`home-assistant_v2.db`), fits a first-order thermal model using ordinary least squares regression, generates validation plots, and prints the identified parameters ready to paste into the MPC number entities on the dashboard.
+
+The script is included in the repository root. Default MPC parameters are pre-populated with values identified from a real 60×60cm grow tent — these are a reasonable starting point but your tent will have different thermal characteristics.
 
 ---
 
