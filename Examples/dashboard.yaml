@@ -80,6 +80,7 @@ views:
                     icon: >
                       {% set m = states('sensor.control_mode') %} {% if m ==
                       'vpd_chase' %} mdi:chart-bell-curve-cumulative {% elif m
+                      == 'mpc' or m == 'night_mpc' %} mdi:cpu-64-bit {% elif m
                       in ['disabled','waiting_for_sensors','init'] %}
                       mdi:clock-outline {% elif m.startswith('night_') %}
                       mdi:weather-night {% elif 'temp' in m and ('limit' in m or
@@ -89,11 +90,11 @@ views:
                       elif m.startswith('drying_') %} mdi:hair-dryer {% else %}
                       mdi:robot {% endif %}
                     icon_color: >
-                      {% set m = states('sensor.control_mode') %} {% if m ==
-                      'vpd_chase' %} green {% elif 'hard_limit' in m or
-                      'safety_trip' in m %} red {% elif m.startswith('night_')
-                      %} blue {% elif m == 'drying_hard_limits_only' %} amber {%
-                      else %} grey {% endif %}
+                      {% set m = states('sensor.control_mode') %} {% if m in
+                      ['vpd_chase', 'mpc', 'night_mpc'] %} green {% elif
+                      'hard_limit' in m or 'safety_trip' in m %} red {% elif
+                      m.startswith('night_') %} blue {% elif m ==
+                      'drying_hard_limits_only' %} amber {% else %} grey {% endif %}
                     fill_container: true
                     tap_action:
                       action: call-service

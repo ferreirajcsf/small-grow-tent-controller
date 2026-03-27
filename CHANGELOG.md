@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.46] - 2026-03-26
+
+### Fixed
+
+- **Ambient sensor config fields now accessible on existing installations** — v0.1.45 bumped the config flow version to 4 but did not include a migration function, so existing entries could not access the reconfigure screen. An `async_migrate_entry` function is now included that upgrades v3 entries to v4 by adding the two new optional ambient sensor fields with empty defaults. No user action is required — existing installations upgrade automatically on restart.
+
+- **Targets no longer reset to stage defaults on every HA restart** — the stage-change detection logic compares `current_stage` to `last_stage` (which starts as `""` in `ControlState`). On the first poll after startup, `RestoreEntity` had not yet restored the stage select entity's saved state, so the coordinator always saw a stage change and reset all targets. A new `is_first_stage_poll` flag suppresses the reset on the very first poll cycle, giving `RestoreEntity` time to restore saved values. Subsequent genuine stage changes still reset targets normally.
+
+- **Controller card icon and colour now correct in MPC modes** — `control_mode == 'mpc'` and `control_mode == 'night_mpc'` now show `mdi:cpu-64-bit` in green, matching the visual language of other active control modes.
+
+---
+
 ## [0.1.45] - 2026-03-26
 
 ### Added

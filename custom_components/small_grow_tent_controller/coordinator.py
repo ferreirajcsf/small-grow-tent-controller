@@ -99,6 +99,10 @@ class ControlState:
 
     # Stage change detection (for VPD target auto-reset)
     last_stage: str = ""
+    # Suppress stage-change target reset on the very first poll after
+    # startup — RestoreEntity takes a few seconds to restore saved values
+    # and the coordinator would otherwise see a spurious stage change.
+    is_first_stage_poll: bool = True
 
     # Day/night transition tracking for temperature ramp
     last_is_day: bool | None = None
@@ -1672,10 +1676,25 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         data = await self._apply_control(data)
 
-        # Stage-change detection: reset VPD target to stage default when stage changes
+        # Stage-change detection: reset VPD target to stage default when stage changes.
+        # Skip the very first poll after startup — RestoreEntity takes a few seconds
+        # to restore saved number values, so last_stage is "" and would trigger a
+        # spurious reset of all targets on every restart.
         current_stage = data.get("stage", DEFAULT_STAGE)
         if current_stage != self.control.last_stage:
-            self.control.last_stage = current_stage
-            await self._reset_stage_targets(current_stage)
+            if self.control.is_first_stage_poll:
+                # Just record the stage — do not reset targets
+                self.control.last_stage = current_stage
+                self.control.is_first_stage_poll = False
+                _LOGGER.debug(
+                    "%s: startup stage poll — recording stage '%s' without resetting targets",
+                    self.entry.title, current_stage,
+                )
+            else:
+                self.control.last_stage = current_stage
+                await self._reset_stage_targets(current_stage)
+        elif self.control.is_first_stage_poll:
+            # Stage unchanged since startup — clear the flag
+            self.control.is_first_stage_poll = False
 
         return data
