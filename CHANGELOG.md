@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.48] - 2026-03-27
+
+### Fixed
+
+- **Ambient sensor fields now visible in Configure screen** — the fields were present in the options flow code but not rendering correctly for two reasons: (1) `vol.Optional` fields with an empty string default are suppressed by some HA versions when no value is set; they now use `description={"suggested_value": ...}` which forces the field to always render. (2) When saving, `vol.Optional` fields left blank are absent from `user_input`, so previously saved values were being lost on every Configure save. The save handler now explicitly preserves ambient field values whether or not the user touched them.
+
+---
+
 ## [0.1.47] - 2026-03-27
 
 ### Fixed

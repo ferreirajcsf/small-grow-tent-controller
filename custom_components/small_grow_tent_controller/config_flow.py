@@ -102,8 +102,8 @@ class SmallGrowTentConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_TOP_TEMP, default=DEFAULTS[CONF_TOP_TEMP]): _entity_selector(),
             vol.Required(CONF_CANOPY_RH, default=DEFAULTS[CONF_CANOPY_RH]): _entity_selector(),
             vol.Required(CONF_TOP_RH, default=DEFAULTS[CONF_TOP_RH]): _entity_selector(),
-            vol.Optional(CONF_AMBIENT_TEMP, default=DEFAULTS[CONF_AMBIENT_TEMP]): _sensor_selector(),
-            vol.Optional(CONF_AMBIENT_RH, default=DEFAULTS[CONF_AMBIENT_RH]): _sensor_selector(),
+            vol.Optional(CONF_AMBIENT_TEMP): _sensor_selector(),
+            vol.Optional(CONF_AMBIENT_RH):   _sensor_selector(),
         }
 
         if self._device_enable.get(CONF_USE_LIGHT, True):
@@ -150,7 +150,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
     async def async_step_entities(self, user_input: dict[str, Any] | None = None):
         """Options step 2: entity selection for enabled devices."""
         if user_input is not None:
-            data = {**self._device_enable, **user_input}
+            # Preserve ambient sensor fields even if left blank —
+            # vol.Optional fields may be absent from user_input when empty
+            existing = {**self.config_entry.data, **self.config_entry.options}
+            data = {
+                **self._device_enable,
+                **user_input,
+                CONF_AMBIENT_TEMP: user_input.get(CONF_AMBIENT_TEMP, existing.get(CONF_AMBIENT_TEMP, "")),
+                CONF_AMBIENT_RH:   user_input.get(CONF_AMBIENT_RH,   existing.get(CONF_AMBIENT_RH,   "")),
+            }
             return self.async_create_entry(title="", data=data)
 
         defaults = {**self.config_entry.data, **self.config_entry.options, **self._device_enable}
@@ -160,8 +168,8 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             vol.Required(CONF_TOP_TEMP, default=defaults.get(CONF_TOP_TEMP, DEFAULTS[CONF_TOP_TEMP])): _entity_selector(),
             vol.Required(CONF_CANOPY_RH, default=defaults.get(CONF_CANOPY_RH, DEFAULTS[CONF_CANOPY_RH])): _entity_selector(),
             vol.Required(CONF_TOP_RH, default=defaults.get(CONF_TOP_RH, DEFAULTS[CONF_TOP_RH])): _entity_selector(),
-            vol.Optional(CONF_AMBIENT_TEMP, default=defaults.get(CONF_AMBIENT_TEMP, DEFAULTS[CONF_AMBIENT_TEMP])): _sensor_selector(),
-            vol.Optional(CONF_AMBIENT_RH, default=defaults.get(CONF_AMBIENT_RH, DEFAULTS[CONF_AMBIENT_RH])): _sensor_selector(),
+            vol.Optional(CONF_AMBIENT_TEMP, description={"suggested_value": defaults.get(CONF_AMBIENT_TEMP, "")}): _sensor_selector(),
+            vol.Optional(CONF_AMBIENT_RH,   description={"suggested_value": defaults.get(CONF_AMBIENT_RH,   "")}): _sensor_selector(),
         }
 
         if defaults.get(CONF_USE_LIGHT, True):
