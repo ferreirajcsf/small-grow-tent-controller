@@ -56,6 +56,14 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
 
     if entry.version == 3:
+        # v3 → v4: added optional ambient_temp and ambient_rh sensor fields
+        data = dict(entry.data)
+        data.setdefault("ambient_temp", "")
+        data.setdefault("ambient_rh",   "")
+        hass.config_entries.async_update_entry(entry, data=data, version=4)
+        return True
+
+    if entry.version == 4:
         return True
 
     # Unknown future version — refuse to load

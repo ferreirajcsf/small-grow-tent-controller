@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.47] - 2026-03-27
+
+### Fixed
+
+- **Config migration v3→v4 now actually fires** — v0.1.46 added `async_migrate_entry` to `config_flow.py` but HA calls the one in `__init__.py`, which already handled v1→v2 and v2→v3 but returned `True` early for v3 without upgrading to v4. The v3→v4 migration is now correctly placed in `__init__.py`. Existing installations will upgrade automatically on restart and the ambient sensor fields will be accessible in **Settings → Devices & Services → Small Grow Tent Controller → Configure**.
+
+- **Targets no longer reset on restart (properly this time)** — v0.1.46's `is_first_stage_poll` fix only suppressed the reset for a single poll, but the real issue is that `async_config_entry_first_refresh()` runs before number entities are set up and their saved values are restored by `RestoreEntity`. The single-poll delay was not long enough. The fix is now a 6-poll startup window (~60 seconds) during which stage changes are recorded but never acted on. Genuine stage changes (which require manual user action) are unaffected.
+
+---
+
 ## [0.1.46] - 2026-03-26
 
 ### Fixed
