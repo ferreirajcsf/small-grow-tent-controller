@@ -1647,10 +1647,36 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             val = self._get_state_float(ambient_temp_eid)
             if val is not None:
                 data["mpc_temp_amb"] = val
+                # Also update the number entity so the dashboard reflects the live value
+                num_eid = self._entity_id("number", "mpc_temp_amb")
+                if num_eid and self._get_entity_state(num_eid) not in (None, "unavailable"):
+                    try:
+                        current = float(self._get_entity_state(num_eid) or 0)
+                        if abs(current - val) >= 0.05:  # only update if changed meaningfully
+                            await self.hass.services.async_call(
+                                "number", "set_value",
+                                {"entity_id": num_eid, "value": round(val, 1)},
+                                blocking=False,
+                            )
+                    except Exception:
+                        pass
         if ambient_rh_eid:
             val = self._get_state_float(ambient_rh_eid)
             if val is not None:
                 data["mpc_rh_amb"] = val
+                # Also update the number entity so the dashboard reflects the live value
+                num_eid = self._entity_id("number", "mpc_rh_amb")
+                if num_eid and self._get_entity_state(num_eid) not in (None, "unavailable"):
+                    try:
+                        current = float(self._get_entity_state(num_eid) or 0)
+                        if abs(current - val) >= 0.5:  # only update if changed meaningfully
+                            await self.hass.services.async_call(
+                                "number", "set_value",
+                                {"entity_id": num_eid, "value": round(val, 1)},
+                                blocking=False,
+                            )
+                    except Exception:
+                        pass
 
         # --- Target conflict detection ---
         # Compute the VPD that would result from target_temp + target_rh

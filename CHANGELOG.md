@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.53] - 2026-03-28
+
+### Fixed
+
+- **MPC Ambient Temp and RH now update on the dashboard** — the coordinator was reading the lung room sensor and using the live value for MPC calculations, but never writing it back to the `MPC Ambient Temp` and `MPC Ambient RH` number entities. The sliders therefore stayed frozen at whatever value the user had last set manually, making it appear as if the sensor integration was not working. The coordinator now calls `number.set_value` to sync the number entities whenever the live sensor reading differs by more than 0.05°C / 0.5% RH, so the dashboard always reflects the actual ambient conditions being used by the MPC. You can now disable the separate `Update MPC Ambient Conditions` automation — the integration handles this automatically.
+
+---
+
 ## [0.1.52] - 2026-03-28
 
 ### Fixed
