@@ -126,6 +126,13 @@ views:
                     name: Day Mode
                     icon: mdi:weather-sunny
                     fill_container: true
+                  - type: custom:mushroom-entity-card
+                    entity: switch.small_grow_tent_controller_rls_adaptation
+                    name: RLS Adaptation
+                    icon: mdi:chart-timeline-variant-shimmer
+                    tap_action:
+                      action: toggle
+                    fill_container: true
           - type: vertical-stack
             view_layout:
               grid-area: calc
@@ -364,6 +371,8 @@ views:
                         name: Weight RH
                       - entity: number.small_grow_tent_controller_mpc_switch_penalty
                         name: Switch Penalty
+                      - entity: number.small_grow_tent_controller_rls_forgetting_factor
+                        name: RLS Forgetting Factor (λ)
           - type: vertical-stack
             view_layout:
               grid-area: devtgt

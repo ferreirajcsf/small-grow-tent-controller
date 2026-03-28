@@ -7,7 +7,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.storage import Store
 
 from .device_info import device_info_for_entry
-from .const import DOMAIN, CONF_USE_EXHAUST
+from .const import DOMAIN, CONF_USE_EXHAUST, CONF_RLS_ENABLED
 
 
 def _is_enabled(entry: ConfigEntry, key: str, default: bool = True) -> bool:
@@ -26,6 +26,7 @@ async def async_setup_entry(
     entities: list[SwitchEntity] = [
         ControllerSwitch(hass, entry),
         VpdChaseSwitch(hass, entry),
+        RlsSwitch(hass, entry),
     ]
     if _is_enabled(entry, CONF_USE_EXHAUST, True):
         entities.append(ExhaustSafetyOverrideSwitch(hass, entry))
@@ -117,5 +118,14 @@ class ExhaustSafetyOverrideSwitch(_StoredSwitch):
         super().__init__(hass, entry, "exhaust_safety_override")
         self._attr_name = "Exhaust Safety Override"
 
+class RlsSwitch(_StoredSwitch):
+    """When ON, the RLS algorithm continuously adapts the MPC model parameters
+    from live observations. When OFF (default), model parameters stay fixed."""
 
+    _store_key  = "rls_enabled"
+    _default_on = False
 
+    def __init__(self, hass, entry):
+        super().__init__(hass, entry, CONF_RLS_ENABLED)
+        self._attr_name = "RLS Adaptation"
+        self._attr_icon = "mdi:chart-timeline-variant-shimmer"

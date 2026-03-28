@@ -60,6 +60,8 @@ NUMBERS = [
     ("mpc_w_temp",              "MPC Weight Temp",              0.0,  10.0,  0.1,  2.0,   ""),
     ("mpc_w_rh",                "MPC Weight RH",                0.0,  10.0,  0.1,  1.0,   ""),
     ("mpc_w_switch",            "MPC Switch Penalty",           0.0,  5.0,   0.1,  0.5,   ""),
+    # RLS parameters
+    ("rls_forgetting_factor",   "RLS Forgetting Factor",        0.990, 1.000, 0.001, 0.999, ""),
 ]
 
 

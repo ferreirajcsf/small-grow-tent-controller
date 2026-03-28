@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.54] - 2026-03-28
+
+### Added
+
+- **RLS (Recursive Least Squares) online model adaptation** — a new **RLS Adaptation** switch in the Grow Tent section enables continuous adaptation of the MPC thermal model from live observations. When enabled, every poll cycle the controller compares what the model predicted would happen (given the previous device states) against what actually happened, and adjusts the model parameters to reduce that error.
+
+  **How it works:** RLS maintains a parameter vector and covariance matrix for both the temperature model (a_heater, a_exhaust, a_passive, a_bias) and the humidity model (b_exhaust, b_passive, b_bias). After each observation, it applies a weighted update that gives more weight to recent data and discounts older data at a rate controlled by the forgetting factor λ.
+
+  **Forgetting factor (λ):** configurable from 0.990 to 1.000, default 0.999. At λ=0.999 the effective memory is ~1000 poll cycles (~2.8 hours), meaning the model adapts to seasonal changes over days rather than minutes. At λ=0.990 the memory is ~100 cycles (~17 minutes) — faster adaptation but more sensitive to noise.
+
+  **Safety:** parameter estimates are sanity-clamped to physically plausible ranges so the model cannot drift to absurd values. Updated parameters are written back to the MPC number entities every cycle so they are visible on the dashboard, persist across restarts, and can be monitored over time.
+
+  **Usage:** RLS is off by default. Enable it once you are satisfied with basic MPC performance and want the model to adapt automatically to seasonal changes, equipment changes, or grow-stage transitions.
+
+---
+
 ## [0.1.53] - 2026-03-28
 
 ### Fixed

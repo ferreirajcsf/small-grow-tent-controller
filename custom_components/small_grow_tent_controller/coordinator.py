@@ -51,6 +51,7 @@ from .const import (
     CONF_EXHAUST_SAFETY_MAX_RH,
     CONF_AMBIENT_TEMP,
     CONF_AMBIENT_RH,
+    CONF_RLS_ENABLED,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -109,6 +110,21 @@ class ControlState:
     last_is_day: bool | None = None
     # Effective ramped temperature target (°C) — slides toward actual target at ramp rate
     ramped_target_temp_c: float | None = None
+
+    # RLS state — persists across poll cycles
+    # Temperature model: θ_t = [a_heater, a_exhaust, a_passive, a_bias]
+    rls_theta_t: list | None = None   # 4-element parameter vector
+    rls_P_t:     list | None = None   # 4x4 covariance matrix (flattened)
+    # Humidity model: θ_r = [b_exhaust, b_passive, b_bias]
+    rls_theta_r: list | None = None   # 3-element parameter vector
+    rls_P_r:     list | None = None   # 3x3 covariance matrix (flattened)
+    # Previous observations (needed to compute delta for next update)
+    rls_prev_temp:   float | None = None
+    rls_prev_rh:     float | None = None
+    rls_prev_heater: int   | None = None
+    rls_prev_exhaust:int   | None = None
+    rls_prev_amb_t:  float | None = None
+    rls_prev_amb_r:  float | None = None
 
     # Last action recorded by the controller
     last_action: str = "none"
@@ -281,6 +297,191 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return not (self.control.heater_max_lockout_until and now < self.control.heater_max_lockout_until)
 
     # ------------------------------------------------------------------ #
+    #  RLS (Recursive Least Squares) online model adaptation              #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _rls_update(
+        theta: list[float],
+        P_flat: list[float],
+        phi: list[float],
+        y_obs: float,
+        lam: float,
+    ) -> tuple[list[float], list[float]]:
+        """One step of forgetting-factor RLS.  Pure Python, no numpy needed.
+
+        theta   — current parameter vector (n,)
+        P_flat  — current covariance matrix, row-major flattened (n*n,)
+        phi     — regressor vector (n,)  — the features for this observation
+        y_obs   — observed output (scalar)
+        lam     — forgetting factor (0 < lam <= 1)
+
+        Returns updated (theta, P_flat).
+        """
+        n = len(theta)
+
+        # Reconstruct P from flat list
+        P = [[P_flat[i * n + j] for j in range(n)] for i in range(n)]
+
+        # Innovation: y_obs - phi^T * theta
+        y_pred = sum(phi[i] * theta[i] for i in range(n))
+        innov  = y_obs - y_pred
+
+        # P * phi
+        Pphi = [sum(P[i][j] * phi[j] for j in range(n)) for i in range(n)]
+
+        # phi^T * P * phi + lam
+        denom = lam + sum(phi[i] * Pphi[i] for i in range(n))
+        if abs(denom) < 1e-10:
+            return theta, P_flat   # degenerate — skip update
+
+        # Kalman gain: k = P*phi / (lam + phi^T*P*phi)
+        k = [Pphi[i] / denom for i in range(n)]
+
+        # Update parameters: theta = theta + k * innov
+        theta_new = [theta[i] + k[i] * innov for i in range(n)]
+
+        # Update covariance: P = (P - k * phi^T * P) / lam
+        # Compute k * phi^T * P
+        P_new_flat = []
+        for i in range(n):
+            for j in range(n):
+                kphiP_ij = k[i] * sum(phi[l] * P[l][j] for l in range(n))
+                P_new_flat.append((P[i][j] - kphiP_ij) / lam)
+
+        return theta_new, P_new_flat
+
+    async def _apply_rls_update(self, data: dict) -> None:
+        """Update MPC model parameters using the latest temperature and RH observations.
+
+        Called every poll cycle when RLS is enabled and previous observations
+        are available.  Uses the previous step's device states and temperatures
+        to compute what the model predicted vs what actually happened, then
+        adjusts the parameters to reduce that error.
+
+        Parameters are written back to the MPC number entities so they persist
+        across restarts and are visible on the dashboard.
+        """
+        ctrl = self.control
+
+        # Skip if no previous observation yet
+        if (ctrl.rls_prev_temp is None or ctrl.rls_prev_rh is None
+                or ctrl.rls_prev_heater is None or ctrl.rls_prev_exhaust is None):
+            return
+
+        lam      = float(data.get("rls_forgetting_factor", 0.999))
+        temp_amb = float(data.get("mpc_temp_amb", 20.0))
+        rh_amb   = float(data.get("mpc_rh_amb",   55.0))
+
+        # Current observations
+        temp_now = float(data.get("avg_temp_c") or 0.0)
+        rh_now   = float(data.get("avg_rh")     or 0.0)
+
+        # Observed deltas
+        d_temp = temp_now - ctrl.rls_prev_temp
+        d_rh   = rh_now   - ctrl.rls_prev_rh
+
+        h = ctrl.rls_prev_heater
+        e = ctrl.rls_prev_exhaust
+        pt = ctrl.rls_prev_amb_t if ctrl.rls_prev_amb_t is not None else temp_amb
+        pr = ctrl.rls_prev_amb_r if ctrl.rls_prev_amb_r is not None else rh_amb
+
+        # ── Temperature model ──────────────────────────────────────────────
+        # Model: d_temp = a_heater*H + a_exhaust*E + a_passive*(T_amb-T) + a_bias
+        phi_t = [float(h), float(e), pt - ctrl.rls_prev_temp, 1.0]
+
+        # Initialise RLS state on first run
+        init_var = 1.0   # initial parameter variance — large = high uncertainty
+        if ctrl.rls_theta_t is None:
+            ctrl.rls_theta_t = [
+                float(data.get("mpc_a_heater",   0.423)),
+                float(data.get("mpc_a_exhaust",  -0.082)),
+                float(data.get("mpc_a_passive",   0.008)),
+                float(data.get("mpc_a_bias",      0.057)),
+            ]
+            ctrl.rls_P_t = [init_var if i == j else 0.0
+                            for i in range(4) for j in range(4)]
+
+        theta_t_new, P_t_new = self._rls_update(
+            ctrl.rls_theta_t, ctrl.rls_P_t, phi_t, d_temp, lam
+        )
+
+        # Sanity-clamp: prevent parameters from drifting to physically absurd values
+        theta_t_new[0] = max(-1.0, min(2.0,  theta_t_new[0]))  # a_heater:  must be positive
+        theta_t_new[1] = max(-2.0, min(0.5,  theta_t_new[1]))  # a_exhaust: expected negative
+        theta_t_new[2] = max(0.0,  min(0.5,  theta_t_new[2]))  # a_passive: must be positive
+        theta_t_new[3] = max(-0.5, min(0.5,  theta_t_new[3]))  # a_bias
+
+        # ── Humidity model ─────────────────────────────────────────────────
+        # Model: d_rh = b_exhaust*E + b_passive*(RH_amb-RH) + b_bias
+        phi_r = [float(e), pr - ctrl.rls_prev_rh, 1.0]
+
+        if ctrl.rls_theta_r is None:
+            ctrl.rls_theta_r = [
+                float(data.get("mpc_b_exhaust",  -1.196)),
+                float(data.get("mpc_b_passive",   0.006)),
+                float(data.get("mpc_b_bias",      0.556)),
+            ]
+            ctrl.rls_P_r = [init_var if i == j else 0.0
+                            for i in range(3) for j in range(3)]
+
+        theta_r_new, P_r_new = self._rls_update(
+            ctrl.rls_theta_r, ctrl.rls_P_r, phi_r, d_rh, lam
+        )
+
+        theta_r_new[0] = max(-5.0, min(0.5,  theta_r_new[0]))  # b_exhaust: expected negative
+        theta_r_new[1] = max(0.0,  min(0.5,  theta_r_new[1]))  # b_passive: must be positive
+        theta_r_new[2] = max(-5.0, min(5.0,  theta_r_new[2]))  # b_bias
+
+        # Store updated state
+        ctrl.rls_theta_t = theta_t_new
+        ctrl.rls_P_t     = P_t_new
+        ctrl.rls_theta_r = theta_r_new
+        ctrl.rls_P_r     = P_r_new
+
+        # Write updated parameters back to number entities so they persist
+        # and are visible on the dashboard. Use non-blocking calls.
+        param_updates = {
+            "mpc_a_heater":  round(theta_t_new[0], 6),
+            "mpc_a_exhaust": round(theta_t_new[1], 6),
+            "mpc_a_passive": round(theta_t_new[2], 6),
+            "mpc_a_bias":    round(theta_t_new[3], 6),
+            "mpc_b_exhaust": round(theta_r_new[0], 6),
+            "mpc_b_passive": round(theta_r_new[1], 6),
+            "mpc_b_bias":    round(theta_r_new[2], 6),
+        }
+        for key, val in param_updates.items():
+            num_eid = self._entity_id("number", key)
+            if num_eid:
+                try:
+                    await self.hass.services.async_call(
+                        "number", "set_value",
+                        {"entity_id": num_eid, "value": val},
+                        blocking=False,
+                    )
+                except Exception:
+                    pass
+
+        # Update data dict so this cycle's MPC uses the freshly adapted params
+        data["mpc_a_heater"]  = theta_t_new[0]
+        data["mpc_a_exhaust"] = theta_t_new[1]
+        data["mpc_a_passive"] = theta_t_new[2]
+        data["mpc_a_bias"]    = theta_t_new[3]
+        data["mpc_b_exhaust"] = theta_r_new[0]
+        data["mpc_b_passive"] = theta_r_new[1]
+        data["mpc_b_bias"]    = theta_r_new[2]
+
+        _LOGGER.debug(
+            "%s: RLS update — a_heater=%.4f a_exhaust=%.4f a_passive=%.5f "
+            "b_exhaust=%.4f innovation_t=%.3f innovation_r=%.3f",
+            self.entry.title,
+            theta_t_new[0], theta_t_new[1], theta_t_new[2],
+            theta_r_new[0],
+            d_temp - sum(phi_t[i] * ctrl.rls_theta_t[i] for i in range(4)),
+            d_rh   - sum(phi_r[i] * ctrl.rls_theta_r[i] for i in range(3)),
+        )
+
+        # ------------------------------------------------------------------ #
     #  Temperature ramp helper                                             #
     # ------------------------------------------------------------------ #
 
@@ -1595,6 +1796,9 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "mpc_w_temp":         self._num(_eid("mpc_w_temp"),      2.0),
             "mpc_w_rh":           self._num(_eid("mpc_w_rh"),        1.0),
             "mpc_w_switch":       self._num(_eid("mpc_w_switch"),    0.5),
+            # RLS
+            "rls_enabled":          (self._get_entity_state(_eid(CONF_RLS_ENABLED, "switch")) == "on"),
+            "rls_forgetting_factor": self._num(_eid("rls_forgetting_factor"), 0.999),
             "dewpoint_margin_c":  self._num(_eid("dewpoint_margin_c"),  1.0),
             "heater_hold_s":      self._num(_eid("heater_hold_s"),      60.0),
             "exhaust_hold_s":     self._num(_eid("exhaust_hold_s"),     45.0),
@@ -1699,6 +1903,22 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         data["target_implied_rh"]    = implied_rh
 
         data = await self._apply_control(data)
+
+        # --- RLS online adaptation ---
+        # Store current observations for use in next poll's RLS update.
+        # The RLS update itself uses the *previous* poll's observations
+        # (what was commanded) vs the *current* readings (what happened).
+        if data.get("rls_enabled") and data.get("avg_temp_c") is not None:
+            await self._apply_rls_update(data)
+        # Always update prev observations regardless of RLS enabled state
+        # so that when RLS is turned on it has valid prev values immediately
+        if data.get("avg_temp_c") is not None and data.get("avg_rh") is not None:
+            self.control.rls_prev_temp    = float(data["avg_temp_c"])
+            self.control.rls_prev_rh      = float(data["avg_rh"])
+            self.control.rls_prev_heater  = 1 if self._switch_is_on(self._get_option(CONF_HEATER_SWITCH)) else 0
+            self.control.rls_prev_exhaust = 1 if self._switch_is_on(self._get_option(CONF_EXHAUST_SWITCH)) else 0
+            self.control.rls_prev_amb_t   = float(data.get("mpc_temp_amb", 20.0))
+            self.control.rls_prev_amb_r   = float(data.get("mpc_rh_amb",   55.0))
 
         # Stage-change detection: reset targets to stage defaults when stage changes.
         # Suppress resets during the startup window (first 6 polls = ~60s) to give

@@ -148,3 +148,6 @@ EXHAUST_MODE_OPTIONS  = ["Auto", "On", "Off", EXHAUST_MODE_DAY_ON, EXHAUST_MODE_
 
 # Temperature ramp rate config key
 CONF_TEMP_RAMP_RATE = "temp_ramp_rate_c_per_min"
+
+# RLS (Recursive Least Squares) online model adaptation
+CONF_RLS_ENABLED = "rls_enabled"
