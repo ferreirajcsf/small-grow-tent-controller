@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.51] - 2026-03-27
+
+### Changed
+
+- **Options flow is now a single screen** — the Configure screen previously had two steps (device toggles, then entity selectors), which meant users had to click through step 1 before seeing the entity fields including the new ambient sensor fields. This caused persistent confusion since HA often shows step 1 as a standalone form with no obvious indication that a second screen follows. The options flow is now a single step (`init`) showing all settings — device enable toggles, sensor assignments, optional lung room sensors, and device switch entities — on one screen.
+
+### Fixed
+
+- **Ambient sensor fields now definitively visible** — the two-step flow architecture was the root cause. With a single step there is no hidden second screen to miss.
+
+---
+
 ## [0.1.50] - 2026-03-27
 
 ### Fixed

@@ -130,59 +130,43 @@ class SmallGrowTentConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
 
 
 class OptionsFlowHandler(config_entries.OptionsFlow):
-    """Options flow handler for Small Grow Tent Controller."""
-
-    def __init__(self) -> None:
-        self._device_enable: dict[str, bool] = {}
+    """Options flow handler — single step showing all settings at once."""
 
     async def async_step_init(self, user_input: dict[str, Any] | None = None):
-        """Options step 1: device enable flags."""
-        if user_input is not None:
-            self._device_enable = {k: bool(user_input.get(k, True)) for k in DEFAULT_DEVICE_ENABLE}
-            return await self.async_step_entities()
-
+        """Single options step: all settings on one screen."""
         defaults = {**self.config_entry.data, **self.config_entry.options}
-        schema = vol.Schema(
-            {vol.Required(k, default=bool(defaults.get(k, v))): _bool_selector() for k, v in DEFAULT_DEVICE_ENABLE.items()}
-        )
-        return self.async_show_form(step_id="init", data_schema=schema)
 
-    async def async_step_entities(self, user_input: dict[str, Any] | None = None):
-        """Options step 2: entity selection for enabled devices."""
         if user_input is not None:
-            # Preserve ambient sensor fields even if left blank —
-            # vol.Optional fields may be absent from user_input when empty
-            existing = {**self.config_entry.data, **self.config_entry.options}
+            # Preserve ambient fields if left blank (vol.Optional may omit them)
             data = {
-                **self._device_enable,
                 **user_input,
-                CONF_AMBIENT_TEMP: user_input.get(CONF_AMBIENT_TEMP, existing.get(CONF_AMBIENT_TEMP, "")),
-                CONF_AMBIENT_RH:   user_input.get(CONF_AMBIENT_RH,   existing.get(CONF_AMBIENT_RH,   "")),
+                CONF_AMBIENT_TEMP: user_input.get(CONF_AMBIENT_TEMP, defaults.get(CONF_AMBIENT_TEMP, "")),
+                CONF_AMBIENT_RH:   user_input.get(CONF_AMBIENT_RH,   defaults.get(CONF_AMBIENT_RH,   "")),
             }
             return self.async_create_entry(title="", data=data)
 
-        defaults = {**self.config_entry.data, **self.config_entry.options, **self._device_enable}
+        schema_dict: dict[Any, Any] = {}
 
-        schema_dict: dict[Any, Any] = {
-            vol.Required(CONF_CANOPY_TEMP, default=defaults.get(CONF_CANOPY_TEMP, DEFAULTS[CONF_CANOPY_TEMP])): _entity_selector(),
-            vol.Required(CONF_TOP_TEMP, default=defaults.get(CONF_TOP_TEMP, DEFAULTS[CONF_TOP_TEMP])): _entity_selector(),
-            vol.Required(CONF_CANOPY_RH, default=defaults.get(CONF_CANOPY_RH, DEFAULTS[CONF_CANOPY_RH])): _entity_selector(),
-            vol.Required(CONF_TOP_RH, default=defaults.get(CONF_TOP_RH, DEFAULTS[CONF_TOP_RH])): _entity_selector(),
-            vol.Optional(CONF_AMBIENT_TEMP, description={"suggested_value": defaults.get(CONF_AMBIENT_TEMP, "")}): _sensor_selector(),
-            vol.Optional(CONF_AMBIENT_RH,   description={"suggested_value": defaults.get(CONF_AMBIENT_RH,   "")}): _sensor_selector(),
-        }
+        # Device enable toggles
+        for k, v in DEFAULT_DEVICE_ENABLE.items():
+            schema_dict[vol.Required(k, default=bool(defaults.get(k, v)))] = _bool_selector()
 
-        if defaults.get(CONF_USE_LIGHT, True):
-            schema_dict[vol.Required(CONF_LIGHT_SWITCH, default=defaults.get(CONF_LIGHT_SWITCH, DEFAULTS[CONF_LIGHT_SWITCH]))] = _entity_selector()
-        if defaults.get(CONF_USE_CIRCULATION, True):
-            schema_dict[vol.Required(CONF_CIRC_SWITCH, default=defaults.get(CONF_CIRC_SWITCH, DEFAULTS[CONF_CIRC_SWITCH]))] = _entity_selector()
-        if defaults.get(CONF_USE_EXHAUST, True):
-            schema_dict[vol.Required(CONF_EXHAUST_SWITCH, default=defaults.get(CONF_EXHAUST_SWITCH, DEFAULTS[CONF_EXHAUST_SWITCH]))] = _entity_selector()
-        if defaults.get(CONF_USE_HEATER, True):
-            schema_dict[vol.Required(CONF_HEATER_SWITCH, default=defaults.get(CONF_HEATER_SWITCH, DEFAULTS[CONF_HEATER_SWITCH]))] = _entity_selector()
-        if defaults.get(CONF_USE_HUMIDIFIER, True):
-            schema_dict[vol.Required(CONF_HUMIDIFIER_SWITCH, default=defaults.get(CONF_HUMIDIFIER_SWITCH, DEFAULTS[CONF_HUMIDIFIER_SWITCH]))] = _entity_selector()
-        if defaults.get(CONF_USE_DEHUMIDIFIER, True):
-            schema_dict[vol.Required(CONF_DEHUMIDIFIER_SWITCH, default=defaults.get(CONF_DEHUMIDIFIER_SWITCH, DEFAULTS[CONF_DEHUMIDIFIER_SWITCH]))] = _entity_selector()
+        # Sensor assignments
+        schema_dict[vol.Required(CONF_CANOPY_TEMP, default=defaults.get(CONF_CANOPY_TEMP, DEFAULTS[CONF_CANOPY_TEMP]))] = _entity_selector()
+        schema_dict[vol.Required(CONF_TOP_TEMP,    default=defaults.get(CONF_TOP_TEMP,    DEFAULTS[CONF_TOP_TEMP]))]    = _entity_selector()
+        schema_dict[vol.Required(CONF_CANOPY_RH,   default=defaults.get(CONF_CANOPY_RH,   DEFAULTS[CONF_CANOPY_RH]))]  = _entity_selector()
+        schema_dict[vol.Required(CONF_TOP_RH,      default=defaults.get(CONF_TOP_RH,      DEFAULTS[CONF_TOP_RH]))]     = _entity_selector()
 
-        return self.async_show_form(step_id="entities", data_schema=vol.Schema(schema_dict))
+        # Optional lung room sensors for MPC ambient tracking
+        schema_dict[vol.Optional(CONF_AMBIENT_TEMP, description={"suggested_value": defaults.get(CONF_AMBIENT_TEMP, "")})] = _sensor_selector()
+        schema_dict[vol.Optional(CONF_AMBIENT_RH,   description={"suggested_value": defaults.get(CONF_AMBIENT_RH,   "")})] = _sensor_selector()
+
+        # Device switch assignments (always shown — user can clear if not using)
+        schema_dict[vol.Optional(CONF_LIGHT_SWITCH,        description={"suggested_value": defaults.get(CONF_LIGHT_SWITCH,        "")})] = _entity_selector()
+        schema_dict[vol.Optional(CONF_CIRC_SWITCH,         description={"suggested_value": defaults.get(CONF_CIRC_SWITCH,         "")})] = _entity_selector()
+        schema_dict[vol.Optional(CONF_EXHAUST_SWITCH,      description={"suggested_value": defaults.get(CONF_EXHAUST_SWITCH,      "")})] = _entity_selector()
+        schema_dict[vol.Optional(CONF_HEATER_SWITCH,       description={"suggested_value": defaults.get(CONF_HEATER_SWITCH,       "")})] = _entity_selector()
+        schema_dict[vol.Optional(CONF_HUMIDIFIER_SWITCH,   description={"suggested_value": defaults.get(CONF_HUMIDIFIER_SWITCH,   "")})] = _entity_selector()
+        schema_dict[vol.Optional(CONF_DEHUMIDIFIER_SWITCH, description={"suggested_value": defaults.get(CONF_DEHUMIDIFIER_SWITCH, "")})] = _entity_selector()
+
+        return self.async_show_form(step_id="init", data_schema=vol.Schema(schema_dict))
