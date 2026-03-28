@@ -656,16 +656,14 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 ctx, f"night VPD chase: dew floor {dew_floor:.1f}°C"
             )
 
-        # Apply stage exhaust night profile on top of VPD chase exhaust decision
+        # Stage exhaust profile: only force-on is applied on top of VPD chase.
+        # The auto profile is intentionally NOT applied — VPD chase already
+        # made the exhaust decision; the auto override causes cycling.
         if exhaust_mode == "on":
             ctx.data["debug_exhaust_reason"] = (
                 ctx.data.get("debug_exhaust_reason", "") + " [night profile: force_on]"
             )
             await self._exhaust_on_if_off(ctx, "night VPD chase: profile=on")
-        elif exhaust_mode == "auto":
-            want = ctx.avg_rh > ctx.max_rh or ctx.avg_temp > ctx.max_temp
-            if not want:
-                await self._exhaust_off_if_on(ctx, "night VPD chase: profile=auto, conditions_ok")
 
         # ------------------------------------------------------------------ #
     #  MPC day control                                                     #
@@ -937,17 +935,15 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             await self._exhaust_off_if_on(ctx, f"night_mpc: plan={best_actions[:2]}")
 
-        # Stage exhaust night profile applied on top — overrides MPC exhaust
-        # if the stage profile requires it (consistent with other night modes)
+        # Stage exhaust profile: only force-on override is applied on top of MPC.
+        # The auto profile is intentionally NOT applied — MPC already made the
+        # optimal exhaust decision; overriding it with "off if conditions ok"
+        # causes cycling as MPC immediately turns it back on.
         if exhaust_mode == "on":
             ctx.data["debug_exhaust_reason"] = (
                 ctx.data.get("debug_exhaust_reason", "") + " [night profile: force_on]"
             )
             await self._exhaust_on_if_off(ctx, "night MPC: profile=on")
-        elif exhaust_mode == "auto":
-            want = ctx.avg_rh > ctx.max_rh or ctx.avg_temp > ctx.max_temp
-            if not want:
-                await self._exhaust_off_if_on(ctx, "night MPC: profile=auto, conditions_ok")
 
         # Humidity: simple RH deadband fallback (same as day MPC)
         deadband_rh = 2.0

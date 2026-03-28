@@ -137,12 +137,18 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         defaults = {**self.config_entry.data, **self.config_entry.options}
 
         if user_input is not None:
-            # Preserve ambient fields if left blank (vol.Optional may omit them)
-            data = {
-                **user_input,
-                CONF_AMBIENT_TEMP: user_input.get(CONF_AMBIENT_TEMP, defaults.get(CONF_AMBIENT_TEMP, "")),
-                CONF_AMBIENT_RH:   user_input.get(CONF_AMBIENT_RH,   defaults.get(CONF_AMBIENT_RH,   "")),
-            }
+            # vol.Optional fields with suggested_value are NOT included in
+            # user_input if the user does not explicitly interact with them.
+            # Merge with defaults so no field is silently dropped.
+            all_optional = [
+                CONF_AMBIENT_TEMP, CONF_AMBIENT_RH,
+                CONF_LIGHT_SWITCH, CONF_CIRC_SWITCH, CONF_EXHAUST_SWITCH,
+                CONF_HEATER_SWITCH, CONF_HUMIDIFIER_SWITCH, CONF_DEHUMIDIFIER_SWITCH,
+            ]
+            data = {**user_input}
+            for key in all_optional:
+                if key not in data:
+                    data[key] = defaults.get(key, "")
             return self.async_create_entry(title="", data=data)
 
         schema_dict: dict[Any, Any] = {}

@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.52] - 2026-03-28
+
+### Fixed
+
+- **Exhaust no longer cycles in Night MPC and Night VPD Chase modes** — both `_apply_night_mpc` and `_apply_night_vpd_chase` applied the stage exhaust night profile on top of the MPC/VPD-chase exhaust decision. When the profile was `auto`, it checked whether conditions exceeded the max limits and turned the exhaust off if not — immediately undoing the decision the MPC or VPD chase had just made. This caused the exhaust to cycle every ~10 seconds as the controller turned it on (MPC decision) then off (profile override) then on again. The `auto` override is now removed from both methods — the MPC and VPD chase own the exhaust decision in these modes. The `on` profile (force exhaust on continuously) is still applied as before since that overrides in only one direction.
+
+- **Options flow save handler now preserves all optional fields** — `vol.Optional` fields with `suggested_value` are absent from `user_input` when the user doesn't explicitly interact with them. The save handler now explicitly merges all optional fields (ambient sensors and device switch assignments) from the existing config when absent from `user_input`, preventing any field from being silently dropped when saving.
+
+---
+
 ## [0.1.51] - 2026-03-27
 
 ### Changed
