@@ -41,6 +41,10 @@ SENSORS = [
     ("debug_heater_on_for_s","Heater On For",             None,                          "s",   True),
     ("debug_heater_max_run_s","Heater Max Run",           None,                          "s",   True),
     ("debug_heater_lockout", "Heater Lockout",            None,                          None,  True),
+    # MPC model identification results
+    ("mpc_r2_temp",  "MPC Model R² Temp",  None,  None,  True),
+    ("mpc_r2_rh",    "MPC Model R² RH",    None,  None,  True),
+    ("mpc_last_identified", "MPC Last Identified", None, None, True),
 ]
 
 # Numeric sensors that should be recorded in long-term statistics

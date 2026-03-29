@@ -62,6 +62,8 @@ NUMBERS = [
     ("mpc_w_switch",            "MPC Switch Penalty",           0.0,  5.0,   0.1,  0.5,   ""),
     # RLS parameters
     ("rls_forgetting_factor",   "RLS Forgetting Factor",        0.990, 1.000, 0.001, 0.999, ""),
+    # MPC model identification
+    ("mpc_identify_days",       "MPC Identification Days",      1,    30,    1,     7,     "days"),
 ]
 
 

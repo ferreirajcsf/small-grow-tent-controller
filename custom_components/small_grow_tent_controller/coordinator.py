@@ -4,6 +4,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, time
 from typing import Any
+import asyncio
 
 from homeassistant.components import persistent_notification
 from homeassistant.core import HomeAssistant
@@ -52,6 +53,7 @@ from .const import (
     CONF_AMBIENT_TEMP,
     CONF_AMBIENT_RH,
     CONF_RLS_ENABLED,
+    CONF_MPC_AUTO_IDENTIFY_WEEKLY,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -125,6 +127,13 @@ class ControlState:
     rls_prev_exhaust:int   | None = None
     rls_prev_amb_t:  float | None = None
     rls_prev_amb_r:  float | None = None
+
+    # MPC model identification results
+    mpc_r2_temp:         float | None = None
+    mpc_r2_rh:           float | None = None
+    mpc_last_identified: str   | None = None
+    # Weekly auto-identification scheduling
+    last_auto_identify:  datetime | None = None
 
     # Last action recorded by the controller
     last_action: str = "none"
@@ -297,6 +306,313 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         return not (self.control.heater_max_lockout_until and now < self.control.heater_max_lockout_until)
 
     # ------------------------------------------------------------------ #
+    #  MPC model identification from HA history                           #
+    # ------------------------------------------------------------------ #
+
+    @staticmethod
+    def _ols_fit(X_rows: list[list[float]], y: list[float]) -> tuple[list[float], float]:
+        """Ordinary least squares via normal equations.  Pure Python, no numpy.
+
+        Solves: theta = (X^T X)^-1 X^T y
+        Returns (theta, r2).
+        """
+        n = len(y)
+        k = len(X_rows[0])
+        if n < k + 1:
+            return [0.0] * k, 0.0
+
+        # X^T X  (k x k)
+        XtX = [[sum(X_rows[r][i] * X_rows[r][j] for r in range(n))
+                for j in range(k)] for i in range(k)]
+
+        # X^T y  (k,)
+        Xty = [sum(X_rows[r][i] * y[r] for r in range(n)) for i in range(k)]
+
+        # Gaussian elimination with partial pivoting
+        aug = [XtX[i][:] + [Xty[i]] for i in range(k)]
+        for col in range(k):
+            # Find pivot
+            pivot = max(range(col, k), key=lambda r: abs(aug[r][col]))
+            aug[col], aug[pivot] = aug[pivot], aug[col]
+            if abs(aug[col][col]) < 1e-12:
+                return [0.0] * k, 0.0
+            for row in range(k):
+                if row == col:
+                    continue
+                factor = aug[row][col] / aug[col][col]
+                for j in range(col, k + 1):
+                    aug[row][j] -= factor * aug[col][j]
+        theta = [aug[i][k] / aug[i][i] for i in range(k)]
+
+        # R²
+        y_mean = sum(y) / n
+        y_pred = [sum(theta[j] * X_rows[r][j] for j in range(k)) for r in range(n)]
+        ss_res = sum((y[r] - y_pred[r]) ** 2 for r in range(n))
+        ss_tot = sum((y[r] - y_mean) ** 2 for r in range(n))
+        r2 = 1.0 - ss_res / ss_tot if ss_tot > 1e-10 else 0.0
+        return theta, r2
+
+    @staticmethod
+    def _run_identification(
+        entity_canopy_temp: str,
+        entity_top_temp: str,
+        entity_canopy_rh: str,
+        entity_top_rh: str,
+        entity_heater: str,
+        entity_exhaust: str,
+        history_days: int,
+        hass_states_getter,   # callable: (entity_id, start, end) -> list of (ts, state_str)
+        temp_amb_estimate: float,
+        rh_amb_estimate: float,
+    ) -> dict:
+        """Pure CPU work — runs in a thread-pool executor.
+
+        Pulls state history for the six entities, resamples to 10-second
+        intervals, fits the thermal and humidity models via OLS, and returns
+        a dict of fitted parameters and R² values.
+        """
+        import math
+        from datetime import timezone
+
+        RESAMPLE_S = 10
+        results = {}
+
+        def parse_numeric(rows):
+            out = {}
+            for ts, val in rows:
+                try:
+                    out[ts] = float(val)
+                except (ValueError, TypeError):
+                    pass
+            return out
+
+        def parse_switch(rows):
+            out = {}
+            for ts, val in rows:
+                if val == "on":
+                    out[ts] = 1.0
+                elif val == "off":
+                    out[ts] = 0.0
+            return out
+
+        def resample(data_dict: dict, start_ts: float, end_ts: float, interval_s: int) -> list:
+            """Forward-fill resample to fixed grid."""
+            sorted_ts = sorted(data_dict.keys())
+            n_steps = int((end_ts - start_ts) / interval_s) + 1
+            result = []
+            last_val = None
+            ptr = 0
+            for step in range(n_steps):
+                t = start_ts + step * interval_s
+                while ptr < len(sorted_ts) and sorted_ts[ptr] <= t:
+                    last_val = data_dict[sorted_ts[ptr]]
+                    ptr += 1
+                if last_val is not None:
+                    result.append((t, last_val))
+            return result
+
+        # Fetch histories
+        raw = {}
+        for eid, parser in [
+            (entity_canopy_temp, parse_numeric),
+            (entity_top_temp,    parse_numeric),
+            (entity_canopy_rh,   parse_numeric),
+            (entity_top_rh,      parse_numeric),
+            (entity_heater,      parse_switch),
+            (entity_exhaust,     parse_switch),
+        ]:
+            rows = hass_states_getter(eid)
+            raw[eid] = parser(rows)
+
+        if not raw[entity_canopy_temp] or not raw[entity_heater]:
+            return {"error": "insufficient history data"}
+
+        # Common time range
+        all_ts = []
+        for d in raw.values():
+            all_ts.extend(d.keys())
+        if not all_ts:
+            return {"error": "no timestamps found"}
+        start_ts = min(all_ts)
+        end_ts   = max(all_ts)
+
+        # Resample all series
+        ct = dict(resample(raw[entity_canopy_temp], start_ts, end_ts, RESAMPLE_S))
+        tt = dict(resample(raw[entity_top_temp],    start_ts, end_ts, RESAMPLE_S))
+        cr = dict(resample(raw[entity_canopy_rh],   start_ts, end_ts, RESAMPLE_S))
+        tr = dict(resample(raw[entity_top_rh],      start_ts, end_ts, RESAMPLE_S))
+        h  = dict(resample(raw[entity_heater],      start_ts, end_ts, RESAMPLE_S))
+        e  = dict(resample(raw[entity_exhaust],     start_ts, end_ts, RESAMPLE_S))
+
+        # Build dataset: need all six series at same timestamp
+        common_ts = sorted(set(ct) & set(tt) & set(cr) & set(tr) & set(h) & set(e))
+        if len(common_ts) < 50:
+            return {"error": f"only {len(common_ts)} aligned samples — need at least 50"}
+
+        temps = [(ct[t] + tt[t]) / 2 for t in common_ts]
+        rhs   = [(cr[t] + tr[t]) / 2 for t in common_ts]
+        hs    = [h[t] for t in common_ts]
+        es    = [e[t] for t in common_ts]
+
+        # Estimate ambient from exhaust-on periods (10th percentile)
+        exhaust_on_temps = [temps[i] for i in range(len(common_ts)) if es[i] == 1.0]
+        exhaust_on_rhs   = [rhs[i]   for i in range(len(common_ts)) if es[i] == 1.0]
+        if len(exhaust_on_temps) > 10:
+            exhaust_on_temps.sort()
+            exhaust_on_rhs.sort()
+            p10_idx = max(0, len(exhaust_on_temps) // 10)
+            temp_amb = exhaust_on_temps[p10_idx]
+            rh_amb   = exhaust_on_rhs[p10_idx]
+        else:
+            temp_amb = temp_amb_estimate
+            rh_amb   = rh_amb_estimate
+
+        # Build regression matrices — one-step-ahead delta
+        X_t, y_t = [], []
+        X_r, y_r = [], []
+        for i in range(len(common_ts) - 1):
+            d_temp = temps[i + 1] - temps[i]
+            d_rh   = rhs[i + 1]   - rhs[i]
+            hi, ei = hs[i], es[i]
+            X_t.append([hi, ei, temp_amb - temps[i], 1.0])
+            y_t.append(d_temp)
+            X_r.append([ei, rh_amb - rhs[i], 1.0])
+            y_r.append(d_rh)
+
+        theta_t, r2_t = GrowTentCoordinator._ols_fit(X_t, y_t)
+        theta_r, r2_r = GrowTentCoordinator._ols_fit(X_r, y_r)
+
+        return {
+            "mpc_temp_amb":  round(temp_amb,   2),
+            "mpc_rh_amb":    round(rh_amb,     2),
+            "mpc_a_heater":  round(theta_t[0], 6),
+            "mpc_a_exhaust": round(theta_t[1], 6),
+            "mpc_a_passive": round(theta_t[2], 6),
+            "mpc_a_bias":    round(theta_t[3], 6),
+            "mpc_b_exhaust": round(theta_r[0], 6),
+            "mpc_b_passive": round(theta_r[1], 6),
+            "mpc_b_bias":    round(theta_r[2], 6),
+            "r2_temp":       round(r2_t, 4),
+            "r2_rh":         round(r2_r, 4),
+            "n_samples":     len(common_ts),
+        }
+
+    async def async_identify_model(self) -> dict:
+        """Trigger MPC model identification from HA history.
+
+        Fetches state history via the HA recorder, runs OLS regression in
+        a thread executor, writes the fitted parameters back to the MPC
+        number entities, records the result in the Grow Journal, and updates
+        the R² diagnostic sensors.
+
+        Returns the result dict (or an error dict).
+        """
+        from homeassistant.util import dt as dt_util
+        from homeassistant.components import recorder as rec_comp
+
+        _LOGGER.info("%s: Starting MPC model identification", self.entry.title)
+
+        # Read config
+        _eid = self._eid
+        history_days = int(self._num(_eid("mpc_identify_days"), 7))
+        canopy_temp  = self._get_option(CONF_CANOPY_TEMP)  or ""
+        top_temp     = self._get_option(CONF_TOP_TEMP)     or ""
+        canopy_rh    = self._get_option(CONF_CANOPY_RH)    or ""
+        top_rh       = self._get_option(CONF_TOP_RH)       or ""
+        heater       = self._get_option(CONF_HEATER_SWITCH) or ""
+        exhaust      = self._get_option(CONF_EXHAUST_SWITCH) or ""
+
+        if not all([canopy_temp, top_temp, canopy_rh, top_rh, heater, exhaust]):
+            _LOGGER.error("%s: Cannot identify — missing entity configuration", self.entry.title)
+            return {"error": "missing entity configuration"}
+
+        start = dt_util.utcnow() - timedelta(days=history_days)
+        end   = dt_util.utcnow()
+
+        # Build a synchronous state getter using the recorder instance
+        # This runs in the executor so we use the sync history API
+        recorder_instance = rec_comp.get_instance(self.hass)
+
+        def get_states_sync(entity_id: str) -> list[tuple[float, str]]:
+            """Fetch (timestamp, state_str) pairs from recorder history."""
+            from homeassistant.components.recorder.history import get_significant_states
+            states_map = get_significant_states(
+                self.hass,
+                start,
+                end,
+                entity_ids=[entity_id],
+                significant_changes_only=False,
+            )
+            rows = []
+            for state in states_map.get(entity_id, []):
+                if state.state not in ("unavailable", "unknown", ""):
+                    rows.append((state.last_updated.timestamp(), state.state))
+            return rows
+
+        temp_amb = float(self.data.get("mpc_temp_amb", 20.0)) if self.data else 20.0
+        rh_amb   = float(self.data.get("mpc_rh_amb",   55.0)) if self.data else 55.0
+
+        # Run the CPU-intensive work off the event loop
+        result = await recorder_instance.async_add_executor_job(
+            self._run_identification,
+            canopy_temp, top_temp, canopy_rh, top_rh, heater, exhaust,
+            history_days,
+            get_states_sync,
+            temp_amb, rh_amb,
+        )
+
+        if "error" in result:
+            _LOGGER.error("%s: Identification failed: %s", self.entry.title, result["error"])
+            return result
+
+        # Write parameters to number entities
+        param_keys = [
+            "mpc_temp_amb", "mpc_rh_amb",
+            "mpc_a_heater", "mpc_a_exhaust", "mpc_a_passive", "mpc_a_bias",
+            "mpc_b_exhaust", "mpc_b_passive", "mpc_b_bias",
+        ]
+        for key in param_keys:
+            num_eid = self._entity_id("number", key)
+            if num_eid and key in result:
+                try:
+                    await self.hass.services.async_call(
+                        "number", "set_value",
+                        {"entity_id": num_eid, "value": result[key]},
+                        blocking=True,
+                    )
+                except Exception as err:
+                    _LOGGER.warning("%s: Could not update %s: %s", self.entry.title, key, err)
+
+        # Store R² and timestamp
+        now_str = dt_util.as_local(dt_util.utcnow()).strftime("%Y-%m-%d %H:%M")
+        self.control.mpc_r2_temp         = result["r2_temp"]
+        self.control.mpc_r2_rh           = result["r2_rh"]
+        self.control.mpc_last_identified = now_str
+        self.control.last_auto_identify  = dt_util.utcnow()
+
+        # Write to Grow Journal
+        note = (
+            f"🔬 MPC Re-identification complete ({now_str}) — "
+            f"{result['n_samples']:,} samples over {history_days} days | "
+            f"R²(temp)={result['r2_temp']:.3f} R²(RH)={result['r2_rh']:.3f} | "
+            f"a_heater={result['mpc_a_heater']:.4f} a_exhaust={result['mpc_a_exhaust']:.4f} "
+            f"a_passive={result['mpc_a_passive']:.5f} a_bias={result['mpc_a_bias']:.4f}"
+        )
+        if hasattr(self, "_notes_store") and self._notes_store:
+            await self._notes_store.async_add_note(note)
+            if self._notes_sensor:
+                self._notes_sensor.refresh()
+
+        # Trigger coordinator refresh so sensors update
+        await self.async_refresh()
+
+        _LOGGER.info(
+            "%s: Identification complete — R²(temp)=%.3f R²(RH)=%.3f n=%d",
+            self.entry.title, result["r2_temp"], result["r2_rh"], result["n_samples"],
+        )
+        return result
+
+        # ------------------------------------------------------------------ #
     #  RLS (Recursive Least Squares) online model adaptation              #
     # ------------------------------------------------------------------ #
 
@@ -1797,8 +2113,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "mpc_w_rh":           self._num(_eid("mpc_w_rh"),        1.0),
             "mpc_w_switch":       self._num(_eid("mpc_w_switch"),    0.5),
             # RLS
-            "rls_enabled":          (self._get_entity_state(_eid(CONF_RLS_ENABLED, "switch")) == "on"),
-            "rls_forgetting_factor": self._num(_eid("rls_forgetting_factor"), 0.999),
+            "rls_enabled":                (self._get_entity_state(_eid(CONF_RLS_ENABLED, "switch")) == "on"),
+            "rls_forgetting_factor":       self._num(_eid("rls_forgetting_factor"), 0.999),
+            "mpc_auto_identify_weekly":   (self._get_entity_state(_eid(CONF_MPC_AUTO_IDENTIFY_WEEKLY, "switch")) == "on"),
+            "mpc_identify_days":           int(self._num(_eid("mpc_identify_days"), 7)),
             "dewpoint_margin_c":  self._num(_eid("dewpoint_margin_c"),  1.0),
             "heater_hold_s":      self._num(_eid("heater_hold_s"),      60.0),
             "exhaust_hold_s":     self._num(_eid("exhaust_hold_s"),     45.0),
@@ -1837,6 +2155,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "debug_mpc_pred_rh":    None,
             "debug_mpc_pred_vpd":   None,
             "debug_mpc_plan":       "n/a",
+            # MPC identification results (updated by button/auto)
+            "mpc_r2_temp":          self.control.mpc_r2_temp,
+            "mpc_r2_rh":            self.control.mpc_r2_rh,
+            "mpc_last_identified":  self.control.mpc_last_identified,
         }
 
         # --- Ambient sensor override for MPC ---
@@ -1919,6 +2241,15 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.control.rls_prev_exhaust = 1 if self._switch_is_on(self._get_option(CONF_EXHAUST_SWITCH)) else 0
             self.control.rls_prev_amb_t   = float(data.get("mpc_temp_amb", 20.0))
             self.control.rls_prev_amb_r   = float(data.get("mpc_rh_amb",   55.0))
+
+        # --- MPC auto-identify weekly ---
+        if data.get("mpc_auto_identify_weekly"):
+            from homeassistant.util import dt as dt_util
+            last = self.control.last_auto_identify
+            if last is None or (dt_util.utcnow() - last).total_seconds() >= 7 * 86400:
+                _LOGGER.info("%s: weekly auto-identification triggered", self.entry.title)
+                # Run in background — don't await so poll cycle is not delayed
+                self.hass.async_create_task(self.async_identify_model())
 
         # Stage-change detection: reset targets to stage defaults when stage changes.
         # Suppress resets during the startup window (first 6 polls = ~60s) to give

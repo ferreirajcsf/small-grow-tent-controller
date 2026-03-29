@@ -150,4 +150,5 @@ EXHAUST_MODE_OPTIONS  = ["Auto", "On", "Off", EXHAUST_MODE_DAY_ON, EXHAUST_MODE_
 CONF_TEMP_RAMP_RATE = "temp_ramp_rate_c_per_min"
 
 # RLS (Recursive Least Squares) online model adaptation
-CONF_RLS_ENABLED = "rls_enabled"
+CONF_RLS_ENABLED              = "rls_enabled"
+CONF_MPC_AUTO_IDENTIFY_WEEKLY = "mpc_auto_identify_weekly"

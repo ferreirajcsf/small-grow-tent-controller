@@ -7,7 +7,7 @@ from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.storage import Store
 
 from .device_info import device_info_for_entry
-from .const import DOMAIN, CONF_USE_EXHAUST, CONF_RLS_ENABLED
+from .const import DOMAIN, CONF_USE_EXHAUST, CONF_RLS_ENABLED, CONF_MPC_AUTO_IDENTIFY_WEEKLY
 
 
 def _is_enabled(entry: ConfigEntry, key: str, default: bool = True) -> bool:
@@ -27,6 +27,7 @@ async def async_setup_entry(
         ControllerSwitch(hass, entry),
         VpdChaseSwitch(hass, entry),
         RlsSwitch(hass, entry),
+        MpcAutoIdentifySwitch(hass, entry),
     ]
     if _is_enabled(entry, CONF_USE_EXHAUST, True):
         entities.append(ExhaustSafetyOverrideSwitch(hass, entry))
@@ -129,3 +130,14 @@ class RlsSwitch(_StoredSwitch):
         super().__init__(hass, entry, CONF_RLS_ENABLED)
         self._attr_name = "RLS Adaptation"
         self._attr_icon = "mdi:chart-timeline-variant-shimmer"
+
+class MpcAutoIdentifySwitch(_StoredSwitch):
+    """When ON, automatically re-identifies the MPC model once per week."""
+
+    _store_key  = "mpc_auto_identify_weekly"
+    _default_on = False
+
+    def __init__(self, hass, entry):
+        super().__init__(hass, entry, CONF_MPC_AUTO_IDENTIFY_WEEKLY)
+        self._attr_name = "MPC Auto-Identify Weekly"
+        self._attr_icon = "mdi:calendar-refresh"

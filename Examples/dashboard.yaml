@@ -373,6 +373,18 @@ views:
                         name: Switch Penalty
                       - entity: number.small_grow_tent_controller_rls_forgetting_factor
                         name: RLS Forgetting Factor (λ)
+                      - entity: number.small_grow_tent_controller_mpc_identification_days
+                        name: Identification Days
+                      - entity: switch.small_grow_tent_controller_mpc_auto_identify_weekly
+                        name: Auto-Identify Weekly
+                      - entity: button.small_grow_tent_controller_re_identify_mpc_model
+                        name: Re-identify MPC Model
+                      - entity: sensor.small_grow_tent_controller_mpc_model_r_temp
+                        name: R² Temp
+                      - entity: sensor.small_grow_tent_controller_mpc_model_r_rh
+                        name: R² RH
+                      - entity: sensor.small_grow_tent_controller_mpc_last_identified
+                        name: Last Identified
           - type: vertical-stack
             view_layout:
               grid-area: devtgt

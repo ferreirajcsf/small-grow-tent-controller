@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.55] - 2026-03-29
+
+### Added
+
+- **MPC Model Re-identification button** — a new **Re-identify MPC Model** button in the MPC Parameters section triggers an in-HA model identification run without leaving Home Assistant or running any external scripts. When pressed, the integration reads the last N days of sensor history directly from the HA recorder, runs OLS regression in a background thread, and writes the fitted parameters directly to all nine MPC parameter entities.
+
+- **MPC Identification Days** — a new number slider (1–30 days, default 7) controls how much history the identification uses.
+
+- **MPC Auto-Identify Weekly** — when enabled, the integration automatically re-identifies the model once per week in the background, keeping the model fresh as seasonal conditions change. The weekly clock starts from the last successful identification (manual or automatic).
+
+- **R² diagnostic sensors** — two new hidden diagnostic sensors (`MPC Model R² Temp` and `MPC Model R² RH`) report the fit quality from the last identification run. Values above 0.3 indicate a usable model; above 0.5 is good.
+
+- **`MPC Last Identified`** — a diagnostic sensor showing the timestamp of the last successful identification.
+
+- **Identification results written to Grow Journal** — after every successful identification (manual or automatic), a timestamped entry is added to the Grow Journal with the R² values, sample count, and key fitted parameters.
+
+---
+
 ## [0.1.54] - 2026-03-28
 
 ### Added
