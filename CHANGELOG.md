@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.59] - 2026-03-29
+
+### Fixed
+
+- **Re-identify MPC Model — journal write now works** — `async_identify_model` called `self._notes_store.async_add_note(note)` but the method is named `async_add`. Fixed.
+
+---
+
 ## [0.1.58] - 2026-03-29
 
 ### Fixed

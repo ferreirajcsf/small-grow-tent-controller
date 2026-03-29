@@ -598,7 +598,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             f"a_passive={result['mpc_a_passive']:.5f} a_bias={result['mpc_a_bias']:.4f}"
         )
         if hasattr(self, "_notes_store") and self._notes_store:
-            await self._notes_store.async_add_note(note)
+            await self._notes_store.async_add(note)
             if self._notes_sensor:
                 self._notes_sensor.refresh()
 
