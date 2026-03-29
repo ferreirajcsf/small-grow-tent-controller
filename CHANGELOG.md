@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.61] - 2026-03-30
+
+### Fixed
+
+- **IndentationError on startup after v0.1.60** — the `_get_weather_conditions` method was inserted correctly but the subsequent `_entity_id` method got its `def` line indented at the wrong level (inside the weather method body rather than at class level), causing an `IndentationError` that prevented the integration from loading entirely. Fixed.
+
+---
+
 ## [0.1.60] - 2026-03-30
 
 ### Added

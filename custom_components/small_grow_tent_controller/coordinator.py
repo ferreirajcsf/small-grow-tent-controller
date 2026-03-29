@@ -269,7 +269,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             rh = None
         return temp, rh
 
-        def _entity_id(self, domain: str, key: str) -> str:
+    def _entity_id(self, domain: str, key: str) -> str:
         registry  = er.async_get(self.hass)
         unique_id = f"{self.entry.entry_id}_{key}"
         eid = registry.async_get_entity_id(domain, DOMAIN, unique_id)
