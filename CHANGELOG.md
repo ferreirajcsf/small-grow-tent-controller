@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.58] - 2026-03-29
+
+### Fixed
+
+- **Re-identify MPC Model button now works** — `async_identify_model` called `self._eid(...)` which doesn't exist as a method on the coordinator. `_eid` is a local closure defined inside `_async_update_data` that wraps `self._entity_id`. The fix adds an equivalent local lambda `_eid = lambda key, domain="number": self._entity_id(domain, key)` at the top of `async_identify_model` so the method can look up number entity IDs correctly.
+
+---
+
 ## [0.1.57] - 2026-03-29
 
 ### Changed

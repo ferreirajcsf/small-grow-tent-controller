@@ -512,7 +512,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         _LOGGER.info("%s: Starting MPC model identification", self.entry.title)
 
         # Read config
-        _eid = self._eid
+        _eid = lambda key, domain="number": self._entity_id(domain, key)
         history_days = int(self._num(_eid("mpc_identify_days"), 7))
         canopy_temp  = self._get_option(CONF_CANOPY_TEMP)  or ""
         top_temp     = self._get_option(CONF_TOP_TEMP)     or ""
