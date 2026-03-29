@@ -507,7 +507,6 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Returns the result dict (or an error dict).
         """
-        from homeassistant.util import dt as dt_util
         from homeassistant.components import recorder as rec_comp
 
         _LOGGER.info("%s: Starting MPC model identification", self.entry.title)
@@ -2244,7 +2243,6 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # --- MPC auto-identify weekly ---
         if data.get("mpc_auto_identify_weekly"):
-            from homeassistant.util import dt as dt_util
             last = self.control.last_auto_identify
             if last is None or (dt_util.utcnow() - last).total_seconds() >= 7 * 86400:
                 _LOGGER.info("%s: weekly auto-identification triggered", self.entry.title)

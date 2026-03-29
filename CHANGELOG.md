@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.56] - 2026-03-29
+
+### Fixed
+
+- **Controller failed to load after v0.1.55** — two `from homeassistant.util import dt as dt_util` imports inside method bodies (`async_identify_model` and the auto-identify weekly block) shadowed the module-level import. Python treats any assignment to a name inside a function — including `import` statements — as a local variable declaration for the entire function scope, so even code *before* the inline import saw `dt_util` as an unbound local. This caused `UnboundLocalError: cannot access local variable 'dt_util'` on the very first call to `_async_update_data`. Both inline imports have been removed — the module-level import at line 13 is the only one needed.
+
+---
+
 ## [0.1.55] - 2026-03-29
 
 ### Added
