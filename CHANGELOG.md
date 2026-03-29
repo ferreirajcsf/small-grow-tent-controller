@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.60] - 2026-03-30
+
+### Added
+
+- **Outdoor weather integration for MPC ambient estimate** — a new optional **Outdoor weather entity** field in the integration Configure screen accepts any HA `weather.*` entity. When set, the controller reads the current outdoor temperature and humidity from the weather entity's attributes each poll cycle and uses them to improve the MPC ambient estimate.
+
+  **Blending logic:** when both a bedroom sensor and a weather entity are configured, the effective ambient is a weighted blend: `α × bedroom + (1-α) × outdoor`, where α is the new **MPC Weather Blend** slider (0.0–1.0, default 0.9). At the default, the bedroom sensor dominates (90%) but outdoor conditions pull the estimate slightly. When the bedroom sensor is unavailable, the controller automatically falls back to outdoor weather only. When neither is configured, the static MPC Ambient Temp/RH sliders are used as before.
+
+  **Why this helps:** outdoor conditions affect bedroom conditions with a lag of minutes to hours. Using outdoor weather as a secondary signal means the ambient estimate never drifts far from reality even if the bedroom sensor drops out, and it provides a meaningful prior for the model in early morning cold snaps or summer heat before the bedroom warms up.
+
+- **`MPC Ambient Source` diagnostic sensor** — shows which source is currently driving the ambient estimate: `bedroom+weather`, `bedroom`, `weather`, or `static_slider`. Hidden by default, enable via Settings → Entities.
+
+- **`MPC Weather Blend` number slider** — controls the blending weight between bedroom sensor and outdoor weather (0.0 = outdoor only, 1.0 = bedroom only, default 0.9).
+
+### Configuration
+
+Go to **Settings → Devices & Services → Small Grow Tent Controller → Configure** and set the new optional **Outdoor weather entity** field to `weather.forecast_home` (or your weather entity). The weather blend slider is in the MPC Parameters fold on the dashboard.
+
+---
+
 ## [0.1.59] - 2026-03-29
 
 ### Fixed

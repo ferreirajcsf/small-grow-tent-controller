@@ -375,6 +375,10 @@ views:
                         name: RLS Forgetting Factor (λ)
                       - entity: number.small_grow_tent_controller_mpc_identification_days
                         name: Identification Days
+                      - entity: number.small_grow_tent_controller_mpc_weather_blend
+                        name: Weather Blend (1=bedroom, 0=outdoor)
+                      - entity: sensor.small_grow_tent_controller_mpc_ambient_source
+                        name: Ambient Source
                       - entity: switch.small_grow_tent_controller_mpc_auto_identify_weekly
                         name: Auto-Identify Weekly
                       - entity: button.small_grow_tent_controller_re_identify_mpc_model

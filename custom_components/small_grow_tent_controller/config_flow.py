@@ -30,6 +30,7 @@ from .const import (
     CONF_TOP_RH,
     CONF_AMBIENT_TEMP,
     CONF_AMBIENT_RH,
+    CONF_WEATHER_ENTITY,
 )
 
 
@@ -43,6 +44,13 @@ def _sensor_selector() -> selector.EntitySelector:
     """Sensor-only selector for ambient/environment entities."""
     return selector.EntitySelector(
         selector.EntitySelectorConfig(domain=["sensor"])
+    )
+
+
+def _weather_selector() -> selector.EntitySelector:
+    """Weather entity selector."""
+    return selector.EntitySelector(
+        selector.EntitySelectorConfig(domain=["weather"])
     )
 
 
@@ -102,8 +110,9 @@ class SmallGrowTentConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             vol.Required(CONF_TOP_TEMP, default=DEFAULTS[CONF_TOP_TEMP]): _entity_selector(),
             vol.Required(CONF_CANOPY_RH, default=DEFAULTS[CONF_CANOPY_RH]): _entity_selector(),
             vol.Required(CONF_TOP_RH, default=DEFAULTS[CONF_TOP_RH]): _entity_selector(),
-            vol.Optional(CONF_AMBIENT_TEMP): _sensor_selector(),
-            vol.Optional(CONF_AMBIENT_RH):   _sensor_selector(),
+            vol.Optional(CONF_AMBIENT_TEMP):   _sensor_selector(),
+            vol.Optional(CONF_AMBIENT_RH):     _sensor_selector(),
+            vol.Optional(CONF_WEATHER_ENTITY): _weather_selector(),
         }
 
         if self._device_enable.get(CONF_USE_LIGHT, True):
@@ -141,7 +150,7 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             # user_input if the user does not explicitly interact with them.
             # Merge with defaults so no field is silently dropped.
             all_optional = [
-                CONF_AMBIENT_TEMP, CONF_AMBIENT_RH,
+                CONF_AMBIENT_TEMP, CONF_AMBIENT_RH, CONF_WEATHER_ENTITY,
                 CONF_LIGHT_SWITCH, CONF_CIRC_SWITCH, CONF_EXHAUST_SWITCH,
                 CONF_HEATER_SWITCH, CONF_HUMIDIFIER_SWITCH, CONF_DEHUMIDIFIER_SWITCH,
             ]
@@ -164,8 +173,9 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         schema_dict[vol.Required(CONF_TOP_RH,      default=defaults.get(CONF_TOP_RH,      DEFAULTS[CONF_TOP_RH]))]     = _entity_selector()
 
         # Optional lung room sensors for MPC ambient tracking
-        schema_dict[vol.Optional(CONF_AMBIENT_TEMP, description={"suggested_value": defaults.get(CONF_AMBIENT_TEMP, "")})] = _sensor_selector()
-        schema_dict[vol.Optional(CONF_AMBIENT_RH,   description={"suggested_value": defaults.get(CONF_AMBIENT_RH,   "")})] = _sensor_selector()
+        schema_dict[vol.Optional(CONF_AMBIENT_TEMP,   description={"suggested_value": defaults.get(CONF_AMBIENT_TEMP,   "")})] = _sensor_selector()
+        schema_dict[vol.Optional(CONF_AMBIENT_RH,     description={"suggested_value": defaults.get(CONF_AMBIENT_RH,     "")})] = _sensor_selector()
+        schema_dict[vol.Optional(CONF_WEATHER_ENTITY, description={"suggested_value": defaults.get(CONF_WEATHER_ENTITY, "")})] = _weather_selector()
 
         # Device switch assignments (always shown — user can clear if not using)
         schema_dict[vol.Optional(CONF_LIGHT_SWITCH,        description={"suggested_value": defaults.get(CONF_LIGHT_SWITCH,        "")})] = _entity_selector()

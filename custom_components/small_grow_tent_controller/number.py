@@ -64,6 +64,8 @@ NUMBERS = [
     ("rls_forgetting_factor",   "RLS Forgetting Factor",        0.990, 1.000, 0.001, 0.999, ""),
     # MPC model identification
     ("mpc_identify_days",       "MPC Identification Days",      1,    30,    1,     7,     "days"),
+    # Outdoor weather blend
+    ("mpc_weather_blend",       "MPC Weather Blend",            0.0,  1.0,   0.05,  0.9,   ""),
 ]
 
 

@@ -52,6 +52,7 @@ from .const import (
     CONF_EXHAUST_SAFETY_MAX_RH,
     CONF_AMBIENT_TEMP,
     CONF_AMBIENT_RH,
+    CONF_WEATHER_ENTITY,
     CONF_RLS_ENABLED,
     CONF_MPC_AUTO_IDENTIFY_WEEKLY,
 )
@@ -245,7 +246,30 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return start <= now_t < end
         return now_t >= start or now_t < end
 
-    def _entity_id(self, domain: str, key: str) -> str:
+    def _get_weather_conditions(self, weather_eid: str) -> tuple[float | None, float | None]:
+        """Read temperature and humidity from a weather.* entity.
+
+        Met.no and most HA weather integrations expose current conditions as
+        state attributes: temperature (°C) and humidity (%).
+        Returns (temp, rh) — either may be None if unavailable.
+        """
+        state = self.hass.states.get(weather_eid)
+        if state is None or state.state in ("unavailable", "unknown"):
+            return None, None
+        attrs = state.attributes
+        temp = attrs.get("temperature")
+        rh   = attrs.get("humidity")
+        try:
+            temp = float(temp) if temp is not None else None
+        except (ValueError, TypeError):
+            temp = None
+        try:
+            rh = float(rh) if rh is not None else None
+        except (ValueError, TypeError):
+            rh = None
+        return temp, rh
+
+        def _entity_id(self, domain: str, key: str) -> str:
         registry  = er.async_get(self.hass)
         unique_id = f"{self.entry.entry_id}_{key}"
         eid = registry.async_get_entity_id(domain, DOMAIN, unique_id)
@@ -2154,54 +2178,81 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "debug_mpc_pred_rh":    None,
             "debug_mpc_pred_vpd":   None,
             "debug_mpc_plan":       "n/a",
+            "debug_ambient_source": "static_slider",
             # MPC identification results (updated by button/auto)
             "mpc_r2_temp":          self.control.mpc_r2_temp,
             "mpc_r2_rh":            self.control.mpc_r2_rh,
             "mpc_last_identified":  self.control.mpc_last_identified,
         }
 
-        # --- Ambient sensor override for MPC ---
-        # If ambient temp/RH sensor entities are configured in the integration
-        # settings, read their current values and override the static MPC slider
-        # values. This keeps the model's ambient estimate current automatically
-        # without needing a separate HA automation.
+        # --- Ambient estimate for MPC ---
+        # Priority: bedroom sensor → weather blend → static slider
+        # When both bedroom sensor and weather entity are configured, the
+        # effective ambient is a weighted blend:
+        #   effective = α * bedroom + (1-α) * outdoor
+        # where α = mpc_weather_blend (default 0.9 — strongly prefer bedroom).
+        # When the bedroom sensor is unavailable, falls back to outdoor weather.
         # `or None` converts empty string (unconfigured) to None safely
-        ambient_temp_eid = self._get_option(CONF_AMBIENT_TEMP) or None
-        ambient_rh_eid   = self._get_option(CONF_AMBIENT_RH)   or None
-        if ambient_temp_eid:
-            val = self._get_state_float(ambient_temp_eid)
-            if val is not None:
-                data["mpc_temp_amb"] = val
-                # Also update the number entity so the dashboard reflects the live value
-                num_eid = self._entity_id("number", "mpc_temp_amb")
-                if num_eid and self._get_entity_state(num_eid) not in (None, "unavailable"):
-                    try:
-                        current = float(self._get_entity_state(num_eid) or 0)
-                        if abs(current - val) >= 0.05:  # only update if changed meaningfully
-                            await self.hass.services.async_call(
-                                "number", "set_value",
-                                {"entity_id": num_eid, "value": round(val, 1)},
-                                blocking=False,
-                            )
-                    except Exception:
-                        pass
-        if ambient_rh_eid:
-            val = self._get_state_float(ambient_rh_eid)
-            if val is not None:
-                data["mpc_rh_amb"] = val
-                # Also update the number entity so the dashboard reflects the live value
-                num_eid = self._entity_id("number", "mpc_rh_amb")
-                if num_eid and self._get_entity_state(num_eid) not in (None, "unavailable"):
-                    try:
-                        current = float(self._get_entity_state(num_eid) or 0)
-                        if abs(current - val) >= 0.5:  # only update if changed meaningfully
-                            await self.hass.services.async_call(
-                                "number", "set_value",
-                                {"entity_id": num_eid, "value": round(val, 1)},
-                                blocking=False,
-                            )
-                    except Exception:
-                        pass
+        ambient_temp_eid  = self._get_option(CONF_AMBIENT_TEMP)    or None
+        ambient_rh_eid    = self._get_option(CONF_AMBIENT_RH)      or None
+        weather_eid       = self._get_option(CONF_WEATHER_ENTITY)  or None
+        weather_blend     = float(self._num(self._entity_id("number", "mpc_weather_blend"), 0.9))
+        weather_blend     = max(0.0, min(1.0, weather_blend))
+
+        # Read bedroom sensor
+        bedroom_temp = self._get_state_float(ambient_temp_eid) if ambient_temp_eid else None
+        bedroom_rh   = self._get_state_float(ambient_rh_eid)   if ambient_rh_eid   else None
+
+        # Read outdoor weather
+        outdoor_temp, outdoor_rh = self._get_weather_conditions(weather_eid) if weather_eid else (None, None)
+
+        # Compute effective ambient temp
+        if bedroom_temp is not None and outdoor_temp is not None:
+            eff_temp = weather_blend * bedroom_temp + (1.0 - weather_blend) * outdoor_temp
+        elif bedroom_temp is not None:
+            eff_temp = bedroom_temp
+        elif outdoor_temp is not None:
+            eff_temp = outdoor_temp
+        else:
+            eff_temp = None
+
+        # Compute effective ambient RH
+        if bedroom_rh is not None and outdoor_rh is not None:
+            eff_rh = weather_blend * bedroom_rh + (1.0 - weather_blend) * outdoor_rh
+        elif bedroom_rh is not None:
+            eff_rh = bedroom_rh
+        elif outdoor_rh is not None:
+            eff_rh = outdoor_rh
+        else:
+            eff_rh = None
+
+        # Apply effective ambient and write back to number entities
+        async def _apply_amb(val: float, key: str, threshold: float) -> None:
+            data[key] = val
+            num_eid = self._entity_id("number", key.replace("mpc_", "mpc_"))
+            if num_eid and self._get_entity_state(num_eid) not in (None, "unavailable"):
+                try:
+                    current = float(self._get_entity_state(num_eid) or 0)
+                    if abs(current - val) >= threshold:
+                        await self.hass.services.async_call(
+                            "number", "set_value",
+                            {"entity_id": num_eid, "value": round(val, 1)},
+                            blocking=False,
+                        )
+                except Exception:
+                    pass
+
+        if eff_temp is not None:
+            await _apply_amb(eff_temp, "mpc_temp_amb", 0.05)
+        if eff_rh is not None:
+            await _apply_amb(eff_rh,   "mpc_rh_amb",   0.5)
+
+        data["debug_ambient_source"] = (
+            "bedroom+weather" if (bedroom_temp is not None and outdoor_temp is not None)
+            else "bedroom" if bedroom_temp is not None
+            else "weather" if outdoor_temp is not None
+            else "static_slider"
+        )
 
         # --- Target conflict detection ---
         # Compute the VPD that would result from target_temp + target_rh
