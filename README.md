@@ -6,7 +6,7 @@
 
 A Home Assistant custom integration that automatically monitors and controls the environment inside a small grow tent — keeping temperature, humidity, and VPD where your plants need them, around the clock.
 
-> **Status:** Active development (pre-1.0). Core control logic is stable. Expect occasional breaking changes until v1.0 is tagged.
+> **Status:** Active development (pre-1.0). Core control logic and MPC are stable and running in production. Expect occasional breaking changes until v1.0 is tagged.
 
 ---
 
@@ -117,12 +117,12 @@ Use the **Return All Devices to Auto** button to hand everything back to the con
 
 Once set up, the integration creates a full set of entities grouped under a single device in your HA UI:
 - Sensors for average temperature, humidity, VPD, dew point, leaf temperature, control mode, and last action
-- Switches for the controller, VPD Chase, and exhaust safety override
-- Number sliders for all limits, targets, deadbands, and hold times
+- Switches for the controller, VPD Chase, exhaust safety override, RLS adaptation, and MPC auto-identify weekly
+- Number sliders for all limits, targets, deadbands, hold times, MPC model parameters, and RLS forgetting factor
 - Select entities for growth stage, day mode, night mode, and per-device modes
-- Number sliders for MPC model parameters (coefficients, cost weights, horizon steps)
 - Time helpers for your light on/off schedule
-- A button to reset all devices to Auto
+- Buttons: Return All Devices to Auto, Re-identify MPC Model
+- Diagnostic sensors for MPC model fit quality (R² temp, R² RH, last identified timestamp) — hidden by default
 
 > **Tip:** There are also diagnostic `debug_*` sensors that show exactly what the controller is thinking (heater target, exhaust policy, light schedule logic, etc.). They're hidden by default — enable them individually via **Settings → Entities** if you want to dig into the details.
 
@@ -198,6 +198,11 @@ Once the integration is running, tune it from the entity controls in your dashbo
 | **MPC Ambient Temp / RH** | The lung room conditions used as the model's ambient estimate. Updated automatically if a lung room sensor is configured in Settings → Configure. |
 | **MPC model coefficients** | a_heater, a_exhaust, a_passive, a_bias, b_exhaust, b_passive, b_bias — identified from your sensor history using `mpc_identify.py`. |
 | **MPC cost weights** | Weight VPD, Weight Temp, Weight RH, Switch Penalty — tune these to adjust how aggressively the MPC prioritises each objective. |
+| **Re-identify MPC Model** | Button — runs OLS regression on recent sensor history inside HA and updates all MPC parameters automatically. |
+| **MPC Identification Days** | How many days of history to use for re-identification (1–30, default 7). |
+| **MPC Auto-Identify Weekly** | When ON, re-identifies the model automatically once per week in the background. |
+| **RLS Adaptation** | When ON, continuously adapts MPC model parameters from live observations using forgetting-factor RLS. Off by default. |
+| **RLS Forgetting Factor (λ)** | Controls how fast RLS adapts (0.990–1.000, default 0.999). Lower = faster adaptation but more sensitive to noise. |
 | **Min / Max Temperature** | Hard limits — heater or exhaust kicks in if breached |
 | **Min / Max Humidity** | Hard limits for RH |
 | **VPD Deadband** | How far VPD can drift before the controller acts (default 0.07 kPa) |
@@ -281,20 +286,27 @@ When everything is within limits, the **Day Mode** selector determines what runs
 
 ## MPC Model Identification
 
-To get the best results from MPC, run `mpc_identify.py` on your real sensor history to fit the thermal model to your specific tent:
+MPC uses a first-order thermal model of your tent. The default parameters are pre-populated with values from a real 60×60cm grow tent — a reasonable starting point — but your tent will have different characteristics. For best results, identify the model from your own sensor history.
+
+### Option A — In-HA button (recommended)
+
+Press the **Re-identify MPC Model** button in the MPC Parameters section of the dashboard. The integration reads the last N days of sensor history directly from the HA recorder, runs OLS regression in the background, and updates all nine MPC parameter entities automatically. Results (R² values, sample count, fitted parameters) are written to the Grow Journal.
+
+Configure how much history to use with the **MPC Identification Days** slider (default 7 days). Enable **MPC Auto-Identify Weekly** to have this run automatically every week.
+
+### Option B — External script (advanced)
+
+The `mpc_identify.py` script in the repository root provides the same regression with additional validation plots. Useful if you want to visually inspect the fit quality before committing to new parameters.
 
 ```bash
 # Install dependencies
 pip install numpy scipy pandas matplotlib
 
-# Edit the CONFIGURATION section in the script with your entity IDs and DB path
-# then run:
+# Edit the CONFIGURATION section with your entity IDs and DB path, then run:
 python3 mpc_identify.py
 ```
 
-The script reads 7 days of state history directly from your HA SQLite database (`home-assistant_v2.db`), fits a first-order thermal model using ordinary least squares regression, generates validation plots, and prints the identified parameters ready to paste into the MPC number entities on the dashboard.
-
-The script is included in the repository root. Default MPC parameters are pre-populated with values identified from a real 60×60cm grow tent — these are a reasonable starting point but your tent will have different thermal characteristics.
+The script generates `mpc_validation.png` and `mpc_residuals.png` showing predicted vs actual temperature and RH, and prints the identified parameters ready to paste into the dashboard sliders.
 
 ---
 
@@ -348,6 +360,12 @@ The controller enforces the desired state every ~10 seconds. If a device isn't r
 
 **The exhaust fan won't turn off**
 If the Exhaust Safety is enabled and your temperature or humidity is above the safety thresholds, the fan will refuse to turn off regardless of the control mode or manual override. Check the `debug_exhaust_reason` sensor — if it contains `[SAFETY: blocked_off]`, that's why. Lower your safety thresholds, or disable the Exhaust Safety if conditions are truly safe.
+
+**MPC doesn't seem to be improving**
+Check the `debug_mpc_pred_temp` and `debug_mpc_pred_vpd` diagnostic sensors. If predictions are far from actual values, re-run model identification with **Re-identify MPC Model**. If the model is recently identified and still performing poorly, try reducing the Switch Penalty weight to allow the controller to act more freely.
+
+**RLS is enabled but parameters are changing too fast / too slow**
+Adjust the **RLS Forgetting Factor (λ)**. At λ=0.999 (default) the model adapts over ~2.8 hours. Increase toward 1.000 for slower adaptation; decrease toward 0.990 for faster. If parameters drift to unexpected values, re-identify the model with the button to reset to a known-good baseline.
 
 **Something seems wrong with the logic**
 Enable the `debug_*` sensors via **Settings → Entities** — they show exactly what the controller is doing and why on every cycle.

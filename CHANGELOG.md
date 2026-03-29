@@ -1,5 +1,15 @@
 # Changelog
 
+## [0.1.57] - 2026-03-29
+
+### Changed
+
+- **`VERSION` constant in `const.py` corrected** — was stuck at `"0.1.28"` since that constant is used for display in the dashboard controller card and had not been updated during the rapid development cycle from v0.1.29 onward. Now reads `"0.1.57"` and will be kept in sync going forward.
+- **Minimum HA version in `hacs.json` bumped to `2024.1.0`** — the integration uses APIs (recorder history, options flow patterns, `async_add_executor_job`) that require at least this version.
+- **README updated** to reflect all features added since v0.1.37: RLS adaptation, Re-identify MPC Model button, MPC Auto-Identify Weekly, R² diagnostic sensors, in-HA identification as the primary method with external script as fallback, updated entities list, expanded settings table, and new MPC/RLS troubleshooting entries.
+
+---
+
 ## [0.1.56] - 2026-03-29
 
 ### Fixed
