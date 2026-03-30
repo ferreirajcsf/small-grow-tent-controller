@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.62] - 2026-03-30
+
+### Fixed
+
+- **RLS driving `a_heater` negative at light-on events** — when the grow light turns on, the tent temperature rises rapidly due to light heat even with the heater off. RLS saw temperature rising with heater=0 and interpreted this as evidence that the heater has a *negative* effect, driving `a_heater` from +0.17 to -0.08 within minutes of the 16:00 lights-on transition. With a negative `a_heater`, MPC avoids turning the heater on — exactly backwards. Two fixes:
+
+  1. **`a_heater` lower clamp raised from -1.0 to 0.001** — a heater physically cannot cool a tent. The comment already said "must be positive" but the bound was wrong. Same fix applied to `a_passive` (passive heat loss coefficient must also be positive). These are the correct physical constraints.
+
+  2. **RLS transition guard** — RLS is now suppressed for 60 poll cycles (~10 minutes) after every day/night transition. The grow light is a significant unmeasured heat source whose transient warmup at lights-on is the most confusing period for the estimator. Suppressing RLS during this window prevents the light heat spike from corrupting the heater coefficient. The guard is logged at debug level.
+
+### Action required
+
+After installing this update, press **Re-identify MPC Model** to reset all parameters to a clean baseline — the previous RLS run will have left `a_heater` at a negative or near-zero value which will prevent the MPC from heating correctly.
+
+---
+
 ## [0.1.61] - 2026-03-30
 
 ### Fixed

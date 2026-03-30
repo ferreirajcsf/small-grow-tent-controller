@@ -1932,6 +1932,11 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if self.control.last_is_day != ctx.is_day:
             self.control.last_is_day = ctx.is_day
             self.control.ramped_target_temp_c = ctx.avg_temp  # start ramp from current temp
+            # Suppress RLS for 60 polls (~10 min) around light transitions.
+            # The grow light adds significant unmeasured heat — without this guard
+            # RLS sees temperature rising with heater=0 at lights-on and incorrectly
+            # drives a_heater negative.
+            self.control.rls_transition_guard = 60
 
         # Determine the actual temperature target for this period
         actual_target_temp = float(data.get("target_temp_c", 25.0)) if ctx.is_day else ctx.night_target_temp
@@ -2281,7 +2286,14 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # The RLS update itself uses the *previous* poll's observations
         # (what was commanded) vs the *current* readings (what happened).
         if data.get("rls_enabled") and data.get("avg_temp_c") is not None:
-            await self._apply_rls_update(data)
+            if self.control.rls_transition_guard > 0:
+                self.control.rls_transition_guard -= 1
+                _LOGGER.debug(
+                    "%s: RLS suppressed during transition guard (%d polls remaining)",
+                    self.entry.title, self.control.rls_transition_guard,
+                )
+            else:
+                await self._apply_rls_update(data)
         # Always update prev observations regardless of RLS enabled state
         # so that when RLS is turned on it has valid prev values immediately
         if data.get("avg_temp_c") is not None and data.get("avg_rh") is not None:
