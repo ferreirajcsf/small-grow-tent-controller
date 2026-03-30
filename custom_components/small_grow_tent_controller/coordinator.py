@@ -768,9 +768,9 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ctrl.rls_theta_r, ctrl.rls_P_r, phi_r, d_rh, lam
         )
 
-        theta_r_new[0] = max(-5.0, min(0.5,  theta_r_new[0]))  # b_exhaust: expected negative
-        theta_r_new[1] = max(0.0,  min(0.5,  theta_r_new[1]))  # b_passive: must be positive
-        theta_r_new[2] = max(-5.0, min(5.0,  theta_r_new[2]))  # b_bias
+        theta_r_new[0] = max(-3.0, min(0.5,  theta_r_new[0]))  # b_exhaust: expected negative, clamped to prevent wet-towel corruption
+        theta_r_new[1] = max(0.001,min(0.5,  theta_r_new[1]))  # b_passive: must be positive
+        theta_r_new[2] = max(-2.0, min(2.0,  theta_r_new[2]))  # b_bias
 
         # Store updated state
         ctrl.rls_theta_t = theta_t_new

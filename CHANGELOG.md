@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.63] - 2026-03-30
+
+### Fixed
+
+- **RLS humidity model clamps tightened** — `b_exhaust` was allowed to drift to -5.0, but the initial identified value is -1.196 and physical limits suggest -3.0 is a reasonable maximum. When wet towel additions cause sudden RH spikes, RLS over-attributes the change to the exhaust coefficient since the wet towel is an unmodelled input. The tighter clamp (-3.0) prevents the model from becoming so aggressive that MPC runs the exhaust hard to drop RH while simultaneously running the heater to compensate. `b_passive` lower clamp raised from 0.0 to 0.001 (same fix as `a_passive`). `b_bias` clamped to ±2.0 (was ±5.0).
+
+---
+
 ## [0.1.62] - 2026-03-30
 
 ### Fixed
