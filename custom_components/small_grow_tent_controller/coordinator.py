@@ -747,8 +747,8 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Sanity-clamp: prevent parameters from drifting to physically absurd values
         theta_t_new[0] = max(-1.0, min(2.0,  theta_t_new[0]))  # a_heater:  must be positive
-        theta_t_new[1] = max(-2.0, min(0.5,  theta_t_new[1]))  # a_exhaust: expected negative
-        theta_t_new[2] = max(0.0,  min(0.5,  theta_t_new[2]))  # a_passive: must be positive
+        theta_t_new[1] = max(-0.5, min(0.5,  theta_t_new[1]))  # a_exhaust: expected negative, clamped to prevent over-attribution
+        theta_t_new[2] = max(0.005, min(0.5, theta_t_new[2]))  # a_passive: floor at 0.005 (zero collapses thermal mass term)
         theta_t_new[3] = max(-0.5, min(0.5,  theta_t_new[3]))  # a_bias
 
         # ── Humidity model ─────────────────────────────────────────────────
@@ -769,7 +769,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
 
         theta_r_new[0] = max(-3.0, min(0.5,  theta_r_new[0]))  # b_exhaust: expected negative, clamped to prevent wet-towel corruption
-        theta_r_new[1] = max(0.001,min(0.5,  theta_r_new[1]))  # b_passive: must be positive
+        theta_r_new[1] = max(0.003, min(0.5, theta_r_new[1]))  # b_passive: floor at 0.003 (zero collapses humidity mass term)
         theta_r_new[2] = max(-2.0, min(2.0,  theta_r_new[2]))  # b_bias
 
         # Store updated state

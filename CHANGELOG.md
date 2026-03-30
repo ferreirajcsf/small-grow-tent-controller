@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.64] - 2026-03-30
+
+### Fixed
+
+- **`a_passive` floor raised from 0.0 to 0.005** — when `a_passive` collapses to zero the model loses its thermal mass term entirely, causing `a_heater` and `a_exhaust` to absorb all the variance and oscillate wildly. The identified value is ~0.008; a floor of 0.005 prevents the collapse while still allowing meaningful adaptation. This was the root cause of the heater firing above target — with `a_passive=0` and an over-estimated `a_exhaust`, MPC predicted the exhaust would cool the tent dramatically and compensated by turning the heater on simultaneously.
+
+- **`a_exhaust` clamp tightened from -2.0 to -0.5** — the identified value is -0.082; allowing drift to -0.3 or beyond causes MPC to wildly over-estimate exhaust cooling, triggering the heater to compensate.
+
+- **`b_passive` floor raised from 0.001 to 0.003** — same issue as `a_passive` for the humidity model.
+
+---
+
 ## [0.1.63] - 2026-03-30
 
 ### Fixed
