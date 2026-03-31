@@ -1,0 +1,16 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Home Assistant / HACS
+.DS_Store
+.vscode/
+.idea/
+*.log
+
+# Virtualenv
+.venv/
+venv/
+.env

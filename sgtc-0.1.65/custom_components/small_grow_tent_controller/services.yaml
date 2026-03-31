@@ -1,0 +1,19 @@
+add_note:
+  name: Add Grow Journal Note
+  description: Adds a timestamped note to the grow journal for this tent.
+  fields:
+    text:
+      name: Note
+      description: The text of the note to record.
+      required: true
+      example: "Topped plant 1 and 2 today. Canopy looking even."
+      selector:
+        text:
+          multiline: true
+    entry_id:
+      name: Entry ID
+      description: Which tent's journal to write to (optional if you only have one tent).
+      required: false
+      example: "abc123def456"
+      selector:
+        text:

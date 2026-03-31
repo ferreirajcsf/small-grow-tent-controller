@@ -607,16 +607,12 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 except Exception as err:
                     _LOGGER.warning("%s: Could not update %s: %s", self.entry.title, key, err)
 
-        # Store R² and timestamp — in memory and persisted to .storage
+        # Store R² and timestamp
         now_str = dt_util.as_local(dt_util.utcnow()).strftime("%Y-%m-%d %H:%M")
         self.control.mpc_r2_temp         = result["r2_temp"]
         self.control.mpc_r2_rh           = result["r2_rh"]
         self.control.mpc_last_identified = now_str
         self.control.last_auto_identify  = dt_util.utcnow()
-        if hasattr(self, "_mpc_results_store") and self._mpc_results_store:
-            await self._mpc_results_store.async_save(
-                result["r2_temp"], result["r2_rh"], now_str
-            )
 
         # Write to Grow Journal
         note = (

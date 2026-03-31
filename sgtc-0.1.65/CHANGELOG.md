@@ -1,21 +1,5 @@
 # Changelog
 
-## [0.1.66] - 2026-03-31
-
-### Fixed
-
-- **R² sensors and Last Identified timestamp now persist across restarts** — `MpcResultsStore` was fully implemented in `notes.py` (including load, save, and restoring values into `ControlState` on startup) but `async_setup_mpc_results_store` was never called from `__init__.py`. One missing line added. After the next successful identification run the values will be saved to HA's `.storage` directory and survive restarts.
-
----
-
-## [0.1.66] - 2026-03-31
-
-### Fixed
-
-- **R² sensors and Last Identified timestamp now persist across restarts** — the MPC identification results (R² Temp, R² RH, Last Identified) were stored only in `ControlState` which resets on every HA restart. A new `MpcResultsStore` saves these values to HA's `.storage` directory (same mechanism as the Grow Journal) and restores them into `ControlState` on startup. The R² sensors will now show their last values immediately after restart without needing to re-run identification.
-
----
-
 ## [0.1.65] - 2026-03-31
 
 ### Added

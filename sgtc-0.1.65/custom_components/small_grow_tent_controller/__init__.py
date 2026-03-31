@@ -81,10 +81,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
-    from .notes import async_setup_notes_store, async_setup_mpc_results_store
+    from .notes import async_setup_notes_store
     await async_setup_notes_store(hass, entry)
-    await async_setup_mpc_results_store(hass, entry)
-    await async_setup_mpc_results_store(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True
