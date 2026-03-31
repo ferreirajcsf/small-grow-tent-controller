@@ -191,6 +191,7 @@ class _Ctx:
     mpc_a_exhaust:      float
     mpc_a_passive:      float
     mpc_a_bias:         float
+    mpc_a_bias_day:     float
     mpc_b_exhaust:      float
     mpc_b_passive:      float
     mpc_b_bias:         float
@@ -1367,7 +1368,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             horizon, leaf_offset,
             ctx.mpc_temp_amb, ctx.mpc_rh_amb,
             ctx.mpc_a_heater, ctx.mpc_a_exhaust,
-            ctx.mpc_a_passive, ctx.mpc_a_bias,
+            ctx.mpc_a_passive, ctx.mpc_a_bias_day,  # daytime bias includes grow light heat
             ctx.mpc_b_exhaust, ctx.mpc_b_passive, ctx.mpc_b_bias,
             ctx.mpc_w_vpd, ctx.mpc_w_temp, ctx.mpc_w_rh, ctx.mpc_w_switch,
         )
@@ -1911,6 +1912,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             mpc_a_exhaust      = float(data.get("mpc_a_exhaust",   -0.082)),
             mpc_a_passive      = float(data.get("mpc_a_passive",    0.008)),
             mpc_a_bias         = float(data.get("mpc_a_bias",       0.057)),
+            mpc_a_bias_day     = float(data.get("mpc_a_bias_day",   0.250)),
             mpc_b_exhaust      = float(data.get("mpc_b_exhaust",   -1.196)),
             mpc_b_passive      = float(data.get("mpc_b_passive",    0.006)),
             mpc_b_bias         = float(data.get("mpc_b_bias",       0.556)),
@@ -2133,6 +2135,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "mpc_a_exhaust":      self._num(_eid("mpc_a_exhaust"),  -0.082),
             "mpc_a_passive":      self._num(_eid("mpc_a_passive"),   0.008),
             "mpc_a_bias":         self._num(_eid("mpc_a_bias"),      0.057),
+            "mpc_a_bias_day":      self._num(_eid("mpc_a_bias_day"),  0.250),
             "mpc_b_exhaust":      self._num(_eid("mpc_b_exhaust"),  -1.196),
             "mpc_b_passive":      self._num(_eid("mpc_b_passive"),   0.006),
             "mpc_b_bias":         self._num(_eid("mpc_b_bias"),      0.556),

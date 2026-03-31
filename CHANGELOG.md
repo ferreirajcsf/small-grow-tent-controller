@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.1.65] - 2026-03-31
+
+### Added
+
+- **MPC daytime bias (`a_bias_day`)** — a new number entity **MPC a_bias (Day)** allows a separate self-heating bias for the lights-on window. The existing `a_bias` continues to be used for night MPC; the new `a_bias_day` is used exclusively by day MPC.
+
+  **Why this matters:** the grow light adds significant heat that the model cannot observe directly (it has no light-on input variable). The single `a_bias` value is identified from mixed day/night data and therefore under-estimates daytime self-heating. With `a_bias` too low, MPC thinks the tent needs help reaching temperature targets and fires the heater — but the light heat is already doing that work, causing overshoot.
+
+  Default value: `0.180°C/step` (~1.1°C/min), which accounts for a 100W LED in a 60×60cm tent on top of the passive heating already in `a_passive`. Tune this value up if the heater still fires unnecessarily during the day, or down if the tent consistently runs below target with lights on.
+
+  The `a_bias (Night)` slider is unchanged and continues to be used by night MPC.
+
+---
+
 ## [0.1.64] - 2026-03-30
 
 ### Fixed

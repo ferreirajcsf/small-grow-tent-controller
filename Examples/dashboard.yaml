@@ -356,7 +356,9 @@ views:
                       - entity: number.small_grow_tent_controller_mpc_a_passive
                         name: a_passive
                       - entity: number.small_grow_tent_controller_mpc_a_bias
-                        name: a_bias
+                        name: a_bias (Night)
+                      - entity: number.small_grow_tent_controller_mpc_a_bias_day
+                        name: a_bias (Day / light on)
                       - entity: number.small_grow_tent_controller_mpc_b_exhaust
                         name: b_exhaust
                       - entity: number.small_grow_tent_controller_mpc_b_passive

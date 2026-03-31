@@ -53,6 +53,7 @@ NUMBERS = [
     ("mpc_a_exhaust",           "MPC a_exhaust",                -2.0, 2.0,   0.001,-0.082, "°C/step"),
     ("mpc_a_passive",           "MPC a_passive",                0.0,  0.5,   0.001, 0.008, "/step"),
     ("mpc_a_bias",              "MPC a_bias",                   -1.0, 1.0,   0.001, 0.057, "°C/step"),
+    ("mpc_a_bias_day",          "MPC a_bias (Day)",             -1.0, 1.0,   0.001, 0.180, "°C/step"),
     ("mpc_b_exhaust",           "MPC b_exhaust",                -5.0, 5.0,   0.01, -1.196, "%/step"),
     ("mpc_b_passive",           "MPC b_passive",                0.0,  0.5,   0.001, 0.006, "/step"),
     ("mpc_b_bias",              "MPC b_bias",                   -5.0, 5.0,   0.01,  0.556, "%/step"),
