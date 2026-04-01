@@ -14,3 +14,9 @@ __pycache__/
 .venv/
 venv/
 .env
+
+# Working / build directories — should never be committed
+sgtc-*/
+dist/
+build/
+*.zip
