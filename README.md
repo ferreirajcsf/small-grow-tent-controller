@@ -363,7 +363,7 @@ The controller enforces the desired state every ~10 seconds. If a device isn't r
 If the Exhaust Safety is enabled and your temperature or humidity is above the safety thresholds, the fan will refuse to turn off regardless of the control mode or manual override. Check the **Exhaust Reason** diagnostic sensor — if it contains `[SAFETY: blocked_off]`, that's why. Lower your safety thresholds, or disable the Exhaust Safety if conditions are truly safe.
 
 **Ambient temperature or humidity isn't updating**
-Check that your lung room sensor and/or outdoor weather entity are configured in **Settings → Devices & Services → Small Grow Tent Controller → Configure**. The **MPC Ambient Source** diagnostic sensor (enable via Settings → Entities) shows which source is currently being used: `bedroom+weather`, `bedroom`, `weather`, or `static_slider`.
+Check that your lung room sensor and/or outdoor weather entity are configured in **Settings → Devices & Services → Small Grow Tent Controller → Configure**. The **MPC Ambient Source** diagnostic sensor (enable via Settings → Entities) shows which source is currently being used: `lung_room+weather`, `lung_room`, `weather`, or `static_slider`.
 
 **MPC doesn't seem to be improving**
 Check the R² diagnostic sensors (**MPC Model R² Temp** and **MPC Model R² RH**) — values below 0.5 suggest the model is a poor fit for your tent. Press **Re-identify MPC Model** to fit the model to your current sensor history. If performance is still poor, try reducing the Switch Penalty weight to allow the controller to act more freely, or increase the horizon from 3 to 5–6 steps.

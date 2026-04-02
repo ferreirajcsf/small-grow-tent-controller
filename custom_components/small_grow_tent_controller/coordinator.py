@@ -2212,12 +2212,12 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         }
 
         # --- Ambient estimate for MPC ---
-        # Priority: bedroom sensor → weather blend → static slider
-        # When both bedroom sensor and weather entity are configured, the
+        # Priority: lung room sensor → weather blend → static slider
+        # When both lung room sensor and weather entity are configured, the
         # effective ambient is a weighted blend:
-        #   effective = α * bedroom + (1-α) * outdoor
-        # where α = mpc_weather_blend (default 0.9 — strongly prefer bedroom).
-        # When the bedroom sensor is unavailable, falls back to outdoor weather.
+        #   effective = α * lung_room + (1-α) * outdoor
+        # where α = mpc_weather_blend (default 0.9 — strongly prefer lung room).
+        # When the lung room sensor is unavailable, falls back to outdoor weather.
         # `or None` converts empty string (unconfigured) to None safely
         ambient_temp_eid  = self._get_option(CONF_AMBIENT_TEMP)    or None
         ambient_rh_eid    = self._get_option(CONF_AMBIENT_RH)      or None
@@ -2225,28 +2225,28 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         weather_blend     = float(self._num(self._entity_id("number", "mpc_weather_blend"), 0.9))
         weather_blend     = max(0.0, min(1.0, weather_blend))
 
-        # Read bedroom sensor
-        bedroom_temp = self._get_state_float(ambient_temp_eid) if ambient_temp_eid else None
-        bedroom_rh   = self._get_state_float(ambient_rh_eid)   if ambient_rh_eid   else None
+        # Read lung room sensor
+        lung_room_temp = self._get_state_float(ambient_temp_eid) if ambient_temp_eid else None
+        lung_room_rh   = self._get_state_float(ambient_rh_eid)   if ambient_rh_eid   else None
 
         # Read outdoor weather
         outdoor_temp, outdoor_rh = self._get_weather_conditions(weather_eid) if weather_eid else (None, None)
 
         # Compute effective ambient temp
-        if bedroom_temp is not None and outdoor_temp is not None:
-            eff_temp = weather_blend * bedroom_temp + (1.0 - weather_blend) * outdoor_temp
-        elif bedroom_temp is not None:
-            eff_temp = bedroom_temp
+        if lung_room_temp is not None and outdoor_temp is not None:
+            eff_temp = weather_blend * lung_room_temp + (1.0 - weather_blend) * outdoor_temp
+        elif lung_room_temp is not None:
+            eff_temp = lung_room_temp
         elif outdoor_temp is not None:
             eff_temp = outdoor_temp
         else:
             eff_temp = None
 
         # Compute effective ambient RH
-        if bedroom_rh is not None and outdoor_rh is not None:
-            eff_rh = weather_blend * bedroom_rh + (1.0 - weather_blend) * outdoor_rh
-        elif bedroom_rh is not None:
-            eff_rh = bedroom_rh
+        if lung_room_rh is not None and outdoor_rh is not None:
+            eff_rh = weather_blend * lung_room_rh + (1.0 - weather_blend) * outdoor_rh
+        elif lung_room_rh is not None:
+            eff_rh = lung_room_rh
         elif outdoor_rh is not None:
             eff_rh = outdoor_rh
         else:
@@ -2274,8 +2274,8 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await _apply_amb(eff_rh,   "mpc_rh_amb",   0.5)
 
         data["debug_ambient_source"] = (
-            "bedroom+weather" if (bedroom_temp is not None and outdoor_temp is not None)
-            else "bedroom" if bedroom_temp is not None
+            "lung_room+weather" if (lung_room_temp is not None and outdoor_temp is not None)
+            else "lung_room" if lung_room_temp is not None
             else "weather" if outdoor_temp is not None
             else "static_slider"
         )
