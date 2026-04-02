@@ -2134,10 +2134,12 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return self._entity_id(domain, key)
 
         data: dict[str, Any] = {
-            "canopy_temp_c":   canopy_t,
-            "top_temp_c":      top_t,
-            "canopy_rh":       canopy_rh,
-            "top_rh":          top_rh,
+            "temp_sensor_1_c":  self._get_state_float(temp_eids[0]) if len(temp_eids) > 0 else None,
+            "temp_sensor_2_c":  self._get_state_float(temp_eids[1]) if len(temp_eids) > 1 else None,
+            "temp_sensor_3_c":  self._get_state_float(temp_eids[2]) if len(temp_eids) > 2 else None,
+            "rh_sensor_1":      self._get_state_float(rh_eids[0])   if len(rh_eids)   > 0 else None,
+            "rh_sensor_2":      self._get_state_float(rh_eids[1])   if len(rh_eids)   > 1 else None,
+            "rh_sensor_3":      self._get_state_float(rh_eids[2])   if len(rh_eids)   > 2 else None,
             "avg_temp_c":      avg_t,
             "avg_rh":          avg_r,
             "vpd_kpa":         vpd,
