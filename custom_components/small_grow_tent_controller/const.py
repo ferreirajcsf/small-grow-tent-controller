@@ -1,5 +1,5 @@
 DOMAIN = "small_grow_tent_controller"
-VERSION = "0.1.68"
+VERSION = "0.1.69"
 
 PLATFORMS = ["sensor", "switch", "select", "number", "time", "binary_sensor", "button"]
 
@@ -19,10 +19,19 @@ CONF_USE_HEATER       = "use_heater"
 CONF_USE_HUMIDIFIER   = "use_humidifier"
 CONF_USE_DEHUMIDIFIER = "use_dehumidifier"
 
-CONF_CANOPY_TEMP   = "canopy_temp"
-CONF_TOP_TEMP      = "top_temp"
-CONF_CANOPY_RH     = "canopy_rh"
-CONF_TOP_RH        = "top_rh"
+# Environment sensor entity IDs — sensor 1 is required, 2 and 3 are optional
+CONF_TEMP_SENSOR_1 = "temp_sensor_1"
+CONF_TEMP_SENSOR_2 = "temp_sensor_2"
+CONF_TEMP_SENSOR_3 = "temp_sensor_3"
+CONF_RH_SENSOR_1   = "rh_sensor_1"
+CONF_RH_SENSOR_2   = "rh_sensor_2"
+CONF_RH_SENSOR_3   = "rh_sensor_3"
+
+# Legacy keys — kept only for migration from config versions ≤ 4
+_CONF_CANOPY_TEMP = "canopy_temp"
+_CONF_TOP_TEMP    = "top_temp"
+_CONF_CANOPY_RH   = "canopy_rh"
+_CONF_TOP_RH      = "top_rh"
 CONF_AMBIENT_TEMP    = "ambient_temp"     # optional lung room temp sensor
 CONF_AMBIENT_RH      = "ambient_rh"       # optional lung room RH sensor
 CONF_WEATHER_ENTITY  = "weather_entity"   # optional outdoor weather entity (weather.*)
@@ -35,10 +44,12 @@ DEFAULTS = {
     CONF_HEATER_SWITCH:       "",
     CONF_HUMIDIFIER_SWITCH:   "",
     CONF_DEHUMIDIFIER_SWITCH: "",
-    CONF_CANOPY_TEMP:         "",
-    CONF_TOP_TEMP:            "",
-    CONF_CANOPY_RH:           "",
-    CONF_TOP_RH:              "",
+    CONF_TEMP_SENSOR_1:       "",
+    CONF_TEMP_SENSOR_2:       "",
+    CONF_TEMP_SENSOR_3:       "",
+    CONF_RH_SENSOR_1:         "",
+    CONF_RH_SENSOR_2:         "",
+    CONF_RH_SENSOR_3:         "",
     CONF_AMBIENT_TEMP:        "",   # optional
     CONF_AMBIENT_RH:          "",   # optional
     CONF_WEATHER_ENTITY:      "",   # optional

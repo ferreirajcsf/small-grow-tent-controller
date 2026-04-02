@@ -24,10 +24,12 @@ from .const import (
     CONF_HEATER_SWITCH,
     CONF_HUMIDIFIER_SWITCH,
     CONF_DEHUMIDIFIER_SWITCH,
-    CONF_CANOPY_TEMP,
-    CONF_TOP_TEMP,
-    CONF_CANOPY_RH,
-    CONF_TOP_RH,
+    CONF_TEMP_SENSOR_1,
+    CONF_TEMP_SENSOR_2,
+    CONF_TEMP_SENSOR_3,
+    CONF_RH_SENSOR_1,
+    CONF_RH_SENSOR_2,
+    CONF_RH_SENSOR_3,
     CONF_AMBIENT_TEMP,
     CONF_AMBIENT_RH,
     CONF_WEATHER_ENTITY,
@@ -61,7 +63,7 @@ def _bool_selector() -> selector.BooleanSelector:
 class SmallGrowTentConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Small Grow Tent Controller."""
 
-    VERSION = 4
+    VERSION = 5
 
     def __init__(self) -> None:
         self._device_enable: dict[str, bool] = {}
@@ -87,10 +89,15 @@ class SmallGrowTentConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
             )
 
         schema_dict: dict[Any, Any] = {
-            vol.Required(CONF_CANOPY_TEMP, default=DEFAULTS[CONF_CANOPY_TEMP]): _entity_selector(),
-            vol.Required(CONF_TOP_TEMP, default=DEFAULTS[CONF_TOP_TEMP]): _entity_selector(),
-            vol.Required(CONF_CANOPY_RH, default=DEFAULTS[CONF_CANOPY_RH]): _entity_selector(),
-            vol.Required(CONF_TOP_RH, default=DEFAULTS[CONF_TOP_RH]): _entity_selector(),
+            # Temperature sensors — 1 required, 2 and 3 optional
+            vol.Required(CONF_TEMP_SENSOR_1): _sensor_selector(),
+            vol.Optional(CONF_TEMP_SENSOR_2): _sensor_selector(),
+            vol.Optional(CONF_TEMP_SENSOR_3): _sensor_selector(),
+            # Humidity sensors — 1 required, 2 and 3 optional
+            vol.Required(CONF_RH_SENSOR_1):   _sensor_selector(),
+            vol.Optional(CONF_RH_SENSOR_2):   _sensor_selector(),
+            vol.Optional(CONF_RH_SENSOR_3):   _sensor_selector(),
+            # Optional lung room and weather
             vol.Optional(CONF_AMBIENT_TEMP):   _sensor_selector(),
             vol.Optional(CONF_AMBIENT_RH):     _sensor_selector(),
             vol.Optional(CONF_WEATHER_ENTITY): _weather_selector(),
@@ -131,8 +138,10 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
             # user_input if the user does not explicitly interact with them.
             # Merge with defaults so no field is silently dropped.
             all_optional = [
-                CONF_AMBIENT_TEMP, CONF_AMBIENT_RH, CONF_WEATHER_ENTITY,
-                CONF_LIGHT_SWITCH, CONF_CIRC_SWITCH, CONF_EXHAUST_SWITCH,
+                CONF_TEMP_SENSOR_2, CONF_TEMP_SENSOR_3,
+                CONF_RH_SENSOR_2,   CONF_RH_SENSOR_3,
+                CONF_AMBIENT_TEMP,  CONF_AMBIENT_RH, CONF_WEATHER_ENTITY,
+                CONF_LIGHT_SWITCH,  CONF_CIRC_SWITCH, CONF_EXHAUST_SWITCH,
                 CONF_HEATER_SWITCH, CONF_HUMIDIFIER_SWITCH, CONF_DEHUMIDIFIER_SWITCH,
             ]
             data = {**user_input}
@@ -147,11 +156,15 @@ class OptionsFlowHandler(config_entries.OptionsFlow):
         for k, v in DEFAULT_DEVICE_ENABLE.items():
             schema_dict[vol.Required(k, default=bool(defaults.get(k, v)))] = _bool_selector()
 
-        # Sensor assignments
-        schema_dict[vol.Required(CONF_CANOPY_TEMP, default=defaults.get(CONF_CANOPY_TEMP, DEFAULTS[CONF_CANOPY_TEMP]))] = _entity_selector()
-        schema_dict[vol.Required(CONF_TOP_TEMP,    default=defaults.get(CONF_TOP_TEMP,    DEFAULTS[CONF_TOP_TEMP]))]    = _entity_selector()
-        schema_dict[vol.Required(CONF_CANOPY_RH,   default=defaults.get(CONF_CANOPY_RH,   DEFAULTS[CONF_CANOPY_RH]))]  = _entity_selector()
-        schema_dict[vol.Required(CONF_TOP_RH,      default=defaults.get(CONF_TOP_RH,      DEFAULTS[CONF_TOP_RH]))]     = _entity_selector()
+        # Temperature sensors
+        schema_dict[vol.Required(CONF_TEMP_SENSOR_1, default=defaults.get(CONF_TEMP_SENSOR_1, ""))] = _sensor_selector()
+        schema_dict[vol.Optional(CONF_TEMP_SENSOR_2, description={"suggested_value": defaults.get(CONF_TEMP_SENSOR_2, "")})] = _sensor_selector()
+        schema_dict[vol.Optional(CONF_TEMP_SENSOR_3, description={"suggested_value": defaults.get(CONF_TEMP_SENSOR_3, "")})] = _sensor_selector()
+
+        # Humidity sensors
+        schema_dict[vol.Required(CONF_RH_SENSOR_1, default=defaults.get(CONF_RH_SENSOR_1, ""))] = _sensor_selector()
+        schema_dict[vol.Optional(CONF_RH_SENSOR_2, description={"suggested_value": defaults.get(CONF_RH_SENSOR_2, "")})] = _sensor_selector()
+        schema_dict[vol.Optional(CONF_RH_SENSOR_3, description={"suggested_value": defaults.get(CONF_RH_SENSOR_3, "")})] = _sensor_selector()
 
         # Optional lung room sensors for MPC ambient tracking
         schema_dict[vol.Optional(CONF_AMBIENT_TEMP,   description={"suggested_value": defaults.get(CONF_AMBIENT_TEMP,   "")})] = _sensor_selector()

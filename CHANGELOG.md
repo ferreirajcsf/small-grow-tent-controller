@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.69] - 2026-04-02
+
+### Changed
+
+- **Flexible sensor configuration — 1 to 3 temperature and humidity sensors** — the integration no longer requires exactly two fixed sensor slots ("canopy" and "top"). You can now assign 1, 2, or 3 temperature sensors and 1, 2, or 3 humidity sensors. All configured sensors are averaged together each poll cycle. Sensor 1 is required; Sensors 2 and 3 are optional. This is a **breaking config change** — existing installs are migrated automatically (config version v4 → v5): your former canopy sensor becomes Temperature Sensor 1, your former top sensor becomes Temperature Sensor 2, and Sensor 3 slots are left empty.
+
+### Migration note
+
+No action required for existing installs. HA will run the migration automatically on first load after updating. If you only ever had one physical sensor and pointed both the old "canopy" and "top" slots at the same entity, after migration you will have Temperature Sensor 1 and 2 pointing at the same entity — you can clear Sensor 2 in **Settings → Devices & Services → Small Grow Tent Controller → Configure** if you prefer.
+
+---
+
 ## [0.1.68] - 2026-04-02
 
 ### Fixed

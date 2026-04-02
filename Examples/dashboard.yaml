@@ -186,22 +186,22 @@ views:
                   grid-row-gap: 8px
                 cards:
                   - type: custom:mushroom-entity-card
-                    entity: sensor.canopy_temperature
+                    entity: sensor.YOUR_TEMP_SENSOR_1     # ← replace with your entity ID
                     name: Canopy Temp
                     icon: mdi:thermometer
                     fill_container: true
                   - type: custom:mushroom-entity-card
-                    entity: sensor.top_temperature
+                    entity: sensor.YOUR_TEMP_SENSOR_2        # ← replace with your entity ID
                     name: Top Temp
                     icon: mdi:thermometer
                     fill_container: true
                   - type: custom:mushroom-entity-card
-                    entity: sensor.canopy_humidity
+                    entity: sensor.YOUR_RH_SENSOR_1          # ← replace with your entity ID
                     name: Canopy RH
                     icon: mdi:water-percent
                     fill_container: true
                   - type: custom:mushroom-entity-card
-                    entity: sensor.top_humidity
+                    entity: sensor.YOUR_RH_SENSOR_2             # ← replace with your entity ID
                     name: Top RH
                     icon: mdi:water-percent
                     fill_container: true
@@ -913,9 +913,9 @@ views:
             entities:
               - entity: sensor.average_temperature
                 name: Avg
-              - entity: sensor.canopy_temperature
+              - entity: sensor.YOUR_TEMP_SENSOR_1     # ← replace with your entity ID
                 name: Canopy
-              - entity: sensor.top_temperature
+              - entity: sensor.YOUR_TEMP_SENSOR_2        # ← replace with your entity ID
                 name: Top
           - type: history-graph
             view_layout:
@@ -925,9 +925,9 @@ views:
             entities:
               - entity: sensor.average_humidity
                 name: Avg RH
-              - entity: sensor.canopy_humidity
+              - entity: sensor.YOUR_RH_SENSOR_1          # ← replace with your entity ID
                 name: Canopy
-              - entity: sensor.top_humidity
+              - entity: sensor.YOUR_RH_SENSOR_2             # ← replace with your entity ID
                 name: Top
           - type: history-graph
             view_layout:

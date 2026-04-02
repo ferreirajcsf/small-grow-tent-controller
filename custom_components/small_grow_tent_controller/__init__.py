@@ -19,6 +19,16 @@ from .const import (
     CONF_HEATER_SWITCH,
     CONF_HUMIDIFIER_SWITCH,
     CONF_DEHUMIDIFIER_SWITCH,
+    CONF_TEMP_SENSOR_1,
+    CONF_TEMP_SENSOR_2,
+    CONF_TEMP_SENSOR_3,
+    CONF_RH_SENSOR_1,
+    CONF_RH_SENSOR_2,
+    CONF_RH_SENSOR_3,
+    _CONF_CANOPY_TEMP,
+    _CONF_TOP_TEMP,
+    _CONF_CANOPY_RH,
+    _CONF_TOP_RH,
 )
 from .coordinator import GrowTentCoordinator
 
@@ -65,6 +75,20 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
 
     if entry.version == 4:
+        # v4 → v5: rename canopy_temp/top_temp/canopy_rh/top_rh to
+        # temp_sensor_1/temp_sensor_2/rh_sensor_1/rh_sensor_2.
+        # Sensor 3 slots default to empty (disabled).
+        data = dict(entry.data)
+        data[CONF_TEMP_SENSOR_1] = data.pop(_CONF_CANOPY_TEMP, "")
+        data[CONF_TEMP_SENSOR_2] = data.pop(_CONF_TOP_TEMP,    "")
+        data[CONF_TEMP_SENSOR_3] = ""
+        data[CONF_RH_SENSOR_1]   = data.pop(_CONF_CANOPY_RH,   "")
+        data[CONF_RH_SENSOR_2]   = data.pop(_CONF_TOP_RH,      "")
+        data[CONF_RH_SENSOR_3]   = ""
+        hass.config_entries.async_update_entry(entry, data=data, version=5)
+        return True
+
+    if entry.version == 5:
         return True
 
     # Unknown future version — refuse to load

@@ -11,8 +11,8 @@
 # Entity IDs to update: switch.YOUR_LIGHT_SWITCH, switch.YOUR_HEATER_SWITCH,
 #   switch.YOUR_CIRCULATION_SWITCH, switch.YOUR_EXHAUST_SWITCH,
 #   switch.YOUR_HUMIDIFIER_SWITCH, switch.YOUR_DEHUMIDIFIER_SWITCH,
-#   sensor.canopy_temperature, sensor.top_temperature,
-#   sensor.canopy_humidity, sensor.top_humidity
+#   sensor.YOUR_TEMP_SENSOR_1, sensor.YOUR_TEMP_SENSOR_2,
+#   sensor.YOUR_RH_SENSOR_1, sensor.YOUR_RH_SENSOR_2
 
 title: Grow Tent
 views:
@@ -129,12 +129,12 @@ views:
                 icon: mdi:thermometer
                 fill_container: true
               - type: custom:mushroom-entity-card
-                entity: sensor.canopy_temperature
+                entity: sensor.YOUR_TEMP_SENSOR_1
                 name: Canopy
                 icon: mdi:thermometer-low
                 fill_container: true
               - type: custom:mushroom-entity-card
-                entity: sensor.top_temperature
+                entity: sensor.YOUR_TEMP_SENSOR_2
                 name: Top
                 icon: mdi:thermometer-high
                 fill_container: true
@@ -154,12 +154,12 @@ views:
                 icon: mdi:water-percent
                 fill_container: true
               - type: custom:mushroom-entity-card
-                entity: sensor.canopy_humidity
+                entity: sensor.YOUR_RH_SENSOR_1
                 name: Canopy
                 icon: mdi:water-percent
                 fill_container: true
               - type: custom:mushroom-entity-card
-                entity: sensor.top_humidity
+                entity: sensor.YOUR_RH_SENSOR_2
                 name: Top
                 icon: mdi:water-percent
                 fill_container: true
@@ -175,9 +175,9 @@ views:
                 entities:
                   - entity: sensor.average_temperature
                     name: Avg
-                  - entity: sensor.canopy_temperature
+                  - entity: sensor.YOUR_TEMP_SENSOR_1
                     name: Canopy
-                  - entity: sensor.top_temperature
+                  - entity: sensor.YOUR_TEMP_SENSOR_2
                     name: Top
               - type: history-graph
                 title: Humidity (24h)
@@ -185,9 +185,9 @@ views:
                 entities:
                   - entity: sensor.average_humidity
                     name: Avg
-                  - entity: sensor.canopy_humidity
+                  - entity: sensor.YOUR_RH_SENSOR_1
                     name: Canopy
-                  - entity: sensor.top_humidity
+                  - entity: sensor.YOUR_RH_SENSOR_2
                     name: Top
               - type: history-graph
                 title: VPD (24h)

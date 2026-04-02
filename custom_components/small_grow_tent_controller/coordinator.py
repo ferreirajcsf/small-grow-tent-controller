@@ -43,10 +43,12 @@ from .const import (
     CONF_USE_HEATER,
     CONF_USE_HUMIDIFIER,
     CONF_USE_DEHUMIDIFIER,
-    CONF_CANOPY_TEMP,
-    CONF_TOP_TEMP,
-    CONF_CANOPY_RH,
-    CONF_TOP_RH,
+    CONF_TEMP_SENSOR_1,
+    CONF_TEMP_SENSOR_2,
+    CONF_TEMP_SENSOR_3,
+    CONF_RH_SENSOR_1,
+    CONF_RH_SENSOR_2,
+    CONF_RH_SENSOR_3,
     CONF_EXHAUST_SAFETY_OVERRIDE,
     CONF_EXHAUST_SAFETY_MAX_TEMP_C,
     CONF_EXHAUST_SAFETY_MAX_RH,
@@ -383,28 +385,25 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
     @staticmethod
     def _run_identification(
-        entity_canopy_temp: str,
-        entity_top_temp: str,
-        entity_canopy_rh: str,
-        entity_top_rh: str,
+        temp_sensor_eids: list[str],
+        rh_sensor_eids: list[str],
         entity_heater: str,
         entity_exhaust: str,
         history_days: int,
-        hass_states_getter,   # callable: (entity_id, start, end) -> list of (ts, state_str)
+        hass_states_getter,   # callable: (entity_id) -> list of (ts, state_str)
         temp_amb_estimate: float,
         rh_amb_estimate: float,
     ) -> dict:
         """Pure CPU work — runs in a thread-pool executor.
 
-        Pulls state history for the six entities, resamples to 10-second
-        intervals, fits the thermal and humidity models via OLS, and returns
-        a dict of fitted parameters and R² values.
-        """
-        import math
-        from datetime import timezone
+        Pulls state history for all configured temperature and RH sensors plus
+        heater and exhaust, resamples to 10-second intervals, averages all
+        sensor readings at each timestep, fits the thermal and humidity models
+        via OLS, and returns a dict of fitted parameters and R² values.
 
+        Accepts 1–3 temperature sensor IDs and 1–3 RH sensor IDs.
+        """
         RESAMPLE_S = 10
-        results = {}
 
         def parse_numeric(rows):
             out = {}
@@ -440,46 +439,52 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     result.append((t, last_val))
             return result
 
-        # Fetch histories
-        raw = {}
-        for eid, parser in [
-            (entity_canopy_temp, parse_numeric),
-            (entity_top_temp,    parse_numeric),
-            (entity_canopy_rh,   parse_numeric),
-            (entity_top_rh,      parse_numeric),
-            (entity_heater,      parse_switch),
-            (entity_exhaust,     parse_switch),
-        ]:
-            rows = hass_states_getter(eid)
-            raw[eid] = parser(rows)
+        # Fetch histories for all sensors
+        raw_temp = {}  # eid -> {ts: value}
+        raw_rh   = {}
+        for eid in temp_sensor_eids:
+            raw_temp[eid] = parse_numeric(hass_states_getter(eid))
+        for eid in rh_sensor_eids:
+            raw_rh[eid] = parse_numeric(hass_states_getter(eid))
 
-        if not raw[entity_canopy_temp] or not raw[entity_heater]:
+        raw_heater  = parse_switch(hass_states_getter(entity_heater))
+        raw_exhaust = parse_switch(hass_states_getter(entity_exhaust))
+
+        # Require at least the first sensor and the heater to have data
+        if not raw_temp[temp_sensor_eids[0]] or not raw_heater:
             return {"error": "insufficient history data"}
 
-        # Common time range
+        # Common time range across all series
         all_ts = []
-        for d in raw.values():
+        for d in list(raw_temp.values()) + list(raw_rh.values()):
             all_ts.extend(d.keys())
+        all_ts.extend(raw_heater.keys())
+        all_ts.extend(raw_exhaust.keys())
         if not all_ts:
             return {"error": "no timestamps found"}
         start_ts = min(all_ts)
         end_ts   = max(all_ts)
 
-        # Resample all series
-        ct = dict(resample(raw[entity_canopy_temp], start_ts, end_ts, RESAMPLE_S))
-        tt = dict(resample(raw[entity_top_temp],    start_ts, end_ts, RESAMPLE_S))
-        cr = dict(resample(raw[entity_canopy_rh],   start_ts, end_ts, RESAMPLE_S))
-        tr = dict(resample(raw[entity_top_rh],      start_ts, end_ts, RESAMPLE_S))
-        h  = dict(resample(raw[entity_heater],      start_ts, end_ts, RESAMPLE_S))
-        e  = dict(resample(raw[entity_exhaust],     start_ts, end_ts, RESAMPLE_S))
+        # Resample all series onto a common grid
+        resampled_temps  = [dict(resample(raw_temp[e], start_ts, end_ts, RESAMPLE_S)) for e in temp_sensor_eids]
+        resampled_rhs    = [dict(resample(raw_rh[e],   start_ts, end_ts, RESAMPLE_S)) for e in rh_sensor_eids]
+        h = dict(resample(raw_heater,  start_ts, end_ts, RESAMPLE_S))
+        e = dict(resample(raw_exhaust, start_ts, end_ts, RESAMPLE_S))
 
-        # Build dataset: need all six series at same timestamp
-        common_ts = sorted(set(ct) & set(tt) & set(cr) & set(tr) & set(h) & set(e))
+        # Timestamps where all resampled series have a value
+        common_ts = set(h.keys()) & set(e.keys())
+        for rt in resampled_temps:
+            common_ts &= set(rt.keys())
+        for rr in resampled_rhs:
+            common_ts &= set(rr.keys())
+        common_ts = sorted(common_ts)
+
         if len(common_ts) < 50:
             return {"error": f"only {len(common_ts)} aligned samples — need at least 50"}
 
-        temps = [(ct[t] + tt[t]) / 2 for t in common_ts]
-        rhs   = [(cr[t] + tr[t]) / 2 for t in common_ts]
+        # Average across all configured sensors at each timestep
+        temps = [sum(rt[t] for rt in resampled_temps) / len(resampled_temps) for t in common_ts]
+        rhs   = [sum(rr[t] for rr in resampled_rhs)   / len(resampled_rhs)   for t in common_ts]
         hs    = [h[t] for t in common_ts]
         es    = [e[t] for t in common_ts]
 
@@ -540,17 +545,22 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         _LOGGER.info("%s: Starting MPC model identification", self.entry.title)
 
-        # Read config
+        # Read config — collect all configured temp and RH sensors
         _eid = lambda key, domain="number": self._entity_id(domain, key)
         history_days = int(self._num(_eid("mpc_identify_days"), 7))
-        canopy_temp  = self._get_option(CONF_CANOPY_TEMP)  or ""
-        top_temp     = self._get_option(CONF_TOP_TEMP)     or ""
-        canopy_rh    = self._get_option(CONF_CANOPY_RH)    or ""
-        top_rh       = self._get_option(CONF_TOP_RH)       or ""
-        heater       = self._get_option(CONF_HEATER_SWITCH) or ""
-        exhaust      = self._get_option(CONF_EXHAUST_SWITCH) or ""
 
-        if not all([canopy_temp, top_temp, canopy_rh, top_rh, heater, exhaust]):
+        temp_sensors = [
+            self._get_option(k) for k in (CONF_TEMP_SENSOR_1, CONF_TEMP_SENSOR_2, CONF_TEMP_SENSOR_3)
+            if self._get_option(k)
+        ]
+        rh_sensors = [
+            self._get_option(k) for k in (CONF_RH_SENSOR_1, CONF_RH_SENSOR_2, CONF_RH_SENSOR_3)
+            if self._get_option(k)
+        ]
+        heater  = self._get_option(CONF_HEATER_SWITCH)  or ""
+        exhaust = self._get_option(CONF_EXHAUST_SWITCH) or ""
+
+        if not temp_sensors or not rh_sensors or not heater or not exhaust:
             _LOGGER.error("%s: Cannot identify — missing entity configuration", self.entry.title)
             return {"error": "missing entity configuration"}
 
@@ -583,7 +593,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Run the CPU-intensive work off the event loop
         result = await recorder_instance.async_add_executor_job(
             self._run_identification,
-            canopy_temp, top_temp, canopy_rh, top_rh, heater, exhaust,
+            temp_sensors, rh_sensors, heater, exhaust,
             history_days,
             get_states_sync,
             temp_amb, rh_amb,
@@ -2087,13 +2097,17 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------ #
 
     async def _async_update_data(self) -> dict[str, Any]:
-        canopy_t  = self._get_state_float(self._get_option(CONF_CANOPY_TEMP))
-        top_t     = self._get_state_float(self._get_option(CONF_TOP_TEMP))
-        canopy_rh = self._get_state_float(self._get_option(CONF_CANOPY_RH))
-        top_rh    = self._get_state_float(self._get_option(CONF_TOP_RH))
+        temp_eids = [
+            self._get_option(k) for k in (CONF_TEMP_SENSOR_1, CONF_TEMP_SENSOR_2, CONF_TEMP_SENSOR_3)
+            if self._get_option(k)
+        ]
+        rh_eids = [
+            self._get_option(k) for k in (CONF_RH_SENSOR_1, CONF_RH_SENSOR_2, CONF_RH_SENSOR_3)
+            if self._get_option(k)
+        ]
 
-        avg_t = avg([canopy_t, top_t])
-        avg_r = avg([canopy_rh, top_rh])
+        avg_t = avg([self._get_state_float(e) for e in temp_eids]) if temp_eids else None
+        avg_r = avg([self._get_state_float(e) for e in rh_eids])   if rh_eids   else None
 
         leaf_off_eid  = self._entity_id("number", "leaf_temp_offset_c")
         leaf_offset_c = self._num(leaf_off_eid, 0.0)

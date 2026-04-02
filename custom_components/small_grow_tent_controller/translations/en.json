@@ -15,21 +15,23 @@
       },
       "entities": {
         "title": "Entities",
-        "description": "Select the entities to use (only enabled devices are shown).",
+        "description": "Select the entities to use (only enabled devices are shown). At least one temperature sensor and one humidity sensor are required. Additional sensors are averaged together.",
         "data": {
+          "temp_sensor_1": "Temperature sensor 1 (required)",
+          "temp_sensor_2": "Temperature sensor 2 (optional)",
+          "temp_sensor_3": "Temperature sensor 3 (optional)",
+          "rh_sensor_1": "Humidity sensor 1 (required)",
+          "rh_sensor_2": "Humidity sensor 2 (optional)",
+          "rh_sensor_3": "Humidity sensor 3 (optional)",
+          "ambient_temp": "Lung room temperature sensor (optional \u2014 used by MPC)",
+          "ambient_rh": "Lung room humidity sensor (optional \u2014 used by MPC)",
+          "weather_entity": "Outdoor weather entity (optional \u2014 fallback/blend for MPC ambient)",
           "light_switch": "Light switch entity",
           "circulation_switch": "Circulation fan switch entity",
           "exhaust_switch": "Exhaust fan switch entity",
           "heater_switch": "Heater switch entity",
           "humidifier_switch": "Humidifier switch entity",
-          "dehumidifier_switch": "Dehumidifier switch entity",
-          "canopy_temp": "Canopy temperature sensor",
-          "top_temp": "Top temperature sensor",
-          "canopy_rh": "Canopy humidity sensor",
-          "top_rh": "Top humidity sensor",
-          "ambient_temp": "Lung room temperature sensor (optional \u2014 used by MPC)",
-          "ambient_rh": "Lung room humidity sensor (optional \u2014 used by MPC)",
-          "weather_entity": "Outdoor weather entity (optional \u2014 fallback/blend for MPC ambient)"
+          "dehumidifier_switch": "Dehumidifier switch entity"
         }
       }
     }
@@ -38,7 +40,7 @@
     "step": {
       "init": {
         "title": "Configure",
-        "description": "Update device assignments and sensor entities.",
+        "description": "Update device assignments and sensor entities. At least one temperature sensor and one humidity sensor are required. Additional sensors are averaged together.",
         "data": {
           "use_light": "Enable light control",
           "use_circulation": "Enable circulation fan control",
@@ -46,19 +48,21 @@
           "use_heater": "Enable heater control",
           "use_humidifier": "Enable humidifier control",
           "use_dehumidifier": "Enable dehumidifier control",
-          "canopy_temp": "Canopy temperature sensor",
-          "top_temp": "Top temperature sensor",
-          "canopy_rh": "Canopy humidity sensor",
-          "top_rh": "Top humidity sensor",
+          "temp_sensor_1": "Temperature sensor 1 (required)",
+          "temp_sensor_2": "Temperature sensor 2 (optional)",
+          "temp_sensor_3": "Temperature sensor 3 (optional)",
+          "rh_sensor_1": "Humidity sensor 1 (required)",
+          "rh_sensor_2": "Humidity sensor 2 (optional)",
+          "rh_sensor_3": "Humidity sensor 3 (optional)",
           "ambient_temp": "Lung room temperature sensor (optional \u2014 used by MPC)",
           "ambient_rh": "Lung room humidity sensor (optional \u2014 used by MPC)",
+          "weather_entity": "Outdoor weather entity (optional \u2014 fallback/blend for MPC ambient)",
           "light_switch": "Light switch entity",
           "circulation_switch": "Circulation fan switch entity",
           "exhaust_switch": "Exhaust fan switch entity",
           "heater_switch": "Heater switch entity",
           "humidifier_switch": "Humidifier switch entity",
-          "dehumidifier_switch": "Dehumidifier switch entity",
-          "weather_entity": "Outdoor weather entity (optional \u2014 fallback/blend for MPC ambient)"
+          "dehumidifier_switch": "Dehumidifier switch entity"
         }
       }
     }

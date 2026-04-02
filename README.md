@@ -146,7 +146,7 @@ Once set up, the integration creates a full set of entities grouped under a sing
 Before setting up the integration, you'll need:
 
 - **Home Assistant 2024.1.0 or later** with HACS support
-- **2 temperature + 2 humidity sensors** — one set at canopy level, one at the top of the tent (the integration averages them). If you only have one sensor at each location, simply assign the same entity to both slots.
+- **At least one temperature sensor and one humidity sensor** inside the tent. The integration accepts up to 3 of each — all configured sensors are averaged together. Using two sensors at different heights (e.g. canopy and top of tent) gives a more representative reading, but a single sensor at each works perfectly fine.
 - **Switch entities for your devices** — any device you want to control needs to be exposed as a `switch` entity in HA (smart plugs, Zigbee relays, etc.)
 
 Optional but recommended:
@@ -186,7 +186,7 @@ Go to **Settings → Devices & Services → Add Integration** and search for **S
 
 The setup screen asks which devices you have and lets you assign entities for each one. Toggle off devices you don't have — this hides irrelevant entities and keeps the UI clean.
 
-Required: your four tent sensors (canopy temp, top temp, canopy RH, top RH).
+Required: at least one temperature sensor and one humidity sensor (up to 3 of each — all are averaged together).
 Optional: lung room temperature and humidity sensors, an outdoor weather entity, and switch entities for each enabled device.
 
 After setup, all entities appear under a single device card named after your config entry. If you run multiple tents, add the integration again and give each entry a different name (e.g. "Veg Tent", "Flower Tent").
