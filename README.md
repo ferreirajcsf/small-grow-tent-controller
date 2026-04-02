@@ -34,7 +34,7 @@ All devices are optional — only enable what you actually have:
 | Device | What it controls |
 |---|---|
 | 🔆 Light | On/off by schedule |
-| 💨 Circulation fan | On whenever controller is active (day and night), off during drying and when controller is disabled |
+| 💨 Circulation fan | On whenever the controller is active (day and night), off during drying and when the controller is disabled |
 | 🌬️ Exhaust fan | Temperature, humidity, and VPD management. Mode options: Auto, On, Off, Day On (on during light window), Night On (on during dark window) |
 | 🔥 Heater | Temperature and dew-point protection |
 | 💧 Humidifier | VPD and humidity management |
@@ -57,7 +57,7 @@ All three target values (VPD, temperature, RH) reset to their stage defaults whe
 
 **Night mode options**
 
-During the lights-off window the controller can operate in one of four modes, selectable from the **Grow Tent** section of the dashboard:
+During the lights-off window the controller can operate in one of four modes, selectable from the dashboard:
 
 | Mode | Behaviour |
 |---|---|
@@ -68,7 +68,7 @@ During the lights-off window the controller can operate in one of four modes, se
 
 **Day mode options**
 
-During the lights-on window the controller can operate in one of three modes, selectable from the **Grow Tent** section of the dashboard:
+During the lights-on window the controller can operate in one of three modes, selectable from the dashboard:
 
 | Mode | Behaviour |
 |---|---|
@@ -82,11 +82,14 @@ Available for both day and night modes. At each poll cycle the MPC evaluates all
 
 Model parameters are identified from your real sensor history using the **Re-identify MPC Model** button on the dashboard — no external scripts needed. The ambient temperature and RH used by the model can be kept current automatically by assigning a lung room sensor and/or outdoor weather entity in **Settings → Devices & Services → Small Grow Tent Controller → Configure**.
 
-Key diagnostic sensors (hidden by default, enable in **Settings → Entities**):
+Key diagnostic sensors for MPC (hidden by default, enable in **Settings → Entities**):
 - `debug_mpc_pred_temp` — predicted temperature at end of horizon
+- `debug_mpc_pred_rh` — predicted RH at end of horizon
 - `debug_mpc_pred_vpd` — predicted VPD at end of horizon
 - `debug_mpc_plan` — first 3 steps of the chosen action sequence
 - `debug_mpc_score` — cost of the chosen plan (lower = better)
+
+> **Note:** These MPC debug values are written to the coordinator data dict every cycle and are visible in the HA template editor via `state_attr`. They are not registered as standalone sensor entities — use the template editor or a custom template sensor to surface them in a dashboard if needed.
 
 **RLS (Recursive Least Squares) online model adaptation**
 
@@ -100,14 +103,14 @@ When enabled, the controller continuously adapts the MPC model parameters from l
 
 **Safety features**
 - **Heater safety shutoff on sensor dropout** — if sensors become unavailable while the heater is running, it is immediately turned off (blocking call) to prevent uncontrolled overheating. Normal control resumes automatically when sensors recover.
-- **Heater max run time** — configurable safety cutoff with automatic lockout if the heater runs continuously too long (0 = disabled)
+- **Heater max run time** — configurable safety cutoff (in seconds) with automatic lockout if the heater runs continuously too long (0 = disabled)
 - **Exhaust safety** — when enabled, the exhaust fan cannot be turned off by *any* part of the control logic (including hard limits, night mode, VPD chase, or manual Off override) while temperature or humidity exceed the configured safety thresholds. This is a true system-wide safety, not just a manual-override guard.
 - Anti-cycling protection via configurable hold times (prevents rapid on/off switching)
 - Controller can be fully disabled while keeping manual device overrides active
 
 **Per-device manual overrides**
 
-Each device has a mode selector with the following options:
+Each controllable device has a mode selector with the following options:
 
 | Option | Behaviour |
 |---|---|
@@ -115,20 +118,26 @@ Each device has a mode selector with the following options:
 | **On** | Device forced on every cycle, regardless of conditions |
 | **Off** | Device forced off every cycle, regardless of conditions |
 
+The exhaust fan has two additional options:
+
+| Option | Behaviour |
+|---|---|
+| **Day On** | Forced on during the light-on window; falls back to Auto during the dark window |
+| **Night On** | Forced on during the dark window; falls back to Auto during the light-on window |
+
 Use the **Return All Devices to Auto** button to hand everything back to the controller in one tap. Overrides are enforced every poll cycle, so the controller will correct any unexpected state change within ~10 seconds.
 
 **Entities created automatically**
 
 Once set up, the integration creates a full set of entities grouped under a single device in your HA UI:
-- Sensors for average temperature, humidity, VPD, dew point, leaf temperature, control mode, and last action
-- Switches for the controller, VPD Chase, exhaust safety override, RLS adaptation, and MPC auto-identify weekly
-- Number sliders for all limits, targets, deadbands, hold times, MPC model parameters, and RLS forgetting factor
-- Select entities for growth stage, day mode, night mode, and per-device modes
-- Time helpers for your light on/off schedule
-- Buttons: Return All Devices to Auto, Re-identify MPC Model
-- Diagnostic sensors for MPC model fit quality (R² temp, R² RH, last identified timestamp) — hidden by default
-
-> **Tip:** There are also diagnostic `debug_*` sensors that show exactly what the controller is thinking (heater target, exhaust policy, light schedule logic, etc.). They're hidden by default — enable them individually via **Settings → Entities** if you want to dig into the details.
+- **Sensors:** average temperature, humidity, VPD, dew point, leaf temperature, leaf temp offset, control mode, last action, target VPD (implied), target conflict %, implied RH for target VPD
+- **Binary sensors:** sensors unavailable (problem indicator), plus one "Use X Control" flag for each configured device
+- **Switches:** controller on/off, VPD Chase, exhaust safety override, RLS adaptation, MPC auto-identify weekly
+- **Number sliders:** all limits, targets, deadbands, hold times, leaf temp offset, MPC model parameters, MPC cost weights, MPC identification days, RLS forgetting factor, weather blend
+- **Select entities:** growth stage, day mode, night mode, and per-device mode selectors (heater, exhaust, humidifier, dehumidifier, circulation)
+- **Time helpers:** light on time, light off time
+- **Buttons:** Return All Devices to Auto, Re-identify MPC Model
+- **Diagnostic sensors** (hidden by default, enable via **Settings → Entities**): controller local time, is-day flag, light window, light/exhaust/heater decision reasons, heater target/error/lockout, MPC model R² (temp + RH), MPC last identified timestamp, MPC ambient source
 
 ---
 
@@ -137,12 +146,12 @@ Once set up, the integration creates a full set of entities grouped under a sing
 Before setting up the integration, you'll need:
 
 - **Home Assistant 2024.1.0 or later** with HACS support
-- **2 temperature + 2 humidity sensors** — one set at canopy level, one at the top of the tent (the integration averages them). A single sensor at each location works fine too — just point both slots at the same entity.
+- **2 temperature + 2 humidity sensors** — one set at canopy level, one at the top of the tent (the integration averages them). If you only have one sensor at each location, simply assign the same entity to both slots.
 - **Switch entities for your devices** — any device you want to control needs to be exposed as a `switch` entity in HA (smart plugs, Zigbee relays, etc.)
 
 Optional but recommended:
 - **A lung room sensor** (temperature + humidity) — keeps the MPC ambient estimate current as conditions change in the room the tent is in
-- **An outdoor weather entity** (`weather.*`) — used as a fallback ambient source when the lung room sensor is unavailable, and as a secondary signal that can improve the model estimate
+- **An outdoor weather entity** (`weather.*`) — used as a secondary ambient source; blended with the lung room sensor reading according to the **MPC Weather Blend** slider
 
 ---
 
@@ -199,12 +208,13 @@ Once the integration is running, tune it from the entity controls in your dashbo
 | **Night Mode** | Controls night-time strategy: Dew Protection (default), VPD Chase, VPD Chase (No Heater), or MPC |
 | **Night VPD Target** | VPD target used during the light-off window — auto-resets on stage change |
 | **Night Target Temperature** | Temperature target during the light-off window — defaults to day temp − 5°C |
-| **Night Target Humidity** | RH target during the light-off window — auto-calculated for congruence with night temp + night VPD |
+| **Night Target Humidity** | RH target during the light-off window — auto-calculated for rough congruence with night temp + night VPD |
+| **Leaf Temp Offset** | Offset applied to average air temperature to estimate leaf temperature for VPD calculation. Default −1.5°C (leaf runs cooler than air due to transpiration). |
 | **Temp Ramp Rate** | Maximum rate of change for the effective temperature target (°C/min). Prevents abrupt jumps at day/night transitions. 0 = disabled (default 1.0) |
 | **MPC Horizon Steps** | How many steps ahead the MPC plans (1–6, default 3). Higher = more lookahead but exponentially more computation. |
 | **MPC Ambient Temp / RH** | The ambient conditions used by the MPC model. Updated automatically from your lung room sensor, outdoor weather, or both — depending on what is configured. |
-| **MPC Weather Blend** | Blend ratio between lung room sensor (1.0) and outdoor weather (0.0). Default 0.9 — strongly prefers the bedroom sensor but lets outdoor conditions contribute slightly. |
-| **MPC model coefficients** | a_heater, a_exhaust, a_passive, a_bias, b_exhaust, b_passive, b_bias — identified automatically via the Re-identify button or the external `mpc_identify.py` script. |
+| **MPC Weather Blend** | Blend ratio between lung room sensor (1.0) and outdoor weather entity (0.0). Default 0.9 — strongly prefers the lung room sensor but lets outdoor conditions contribute slightly. Only active when both sources are configured. |
+| **MPC model coefficients** | a_heater, a_exhaust, a_passive, a_bias (night), a_bias_day, b_exhaust, b_passive, b_bias — identified automatically via the Re-identify button. |
 | **MPC cost weights** | Weight VPD, Weight Temp, Weight RH, Switch Penalty — tune these to adjust how aggressively the MPC prioritises each objective. |
 | **Re-identify MPC Model** | Button — runs OLS regression on recent sensor history inside HA and updates all MPC parameters automatically. Results are written to the Grow Journal. |
 | **MPC Identification Days** | How many days of history to use for re-identification (1–30, default 7). |
@@ -217,7 +227,7 @@ Once the integration is running, tune it from the entity controls in your dashbo
 | **Dew Point Margin** | How many °C above dew point the heater targets at night (default 1.0°C) |
 | **Light On / Off Time** | Your light schedule — the controller uses this for day/night logic |
 | **Hold Times** | Minimum time between switching each device (prevents rapid cycling) |
-| **Heater Max Run Time** | Safety cutoff — heater is forced off and locked out if it runs continuously too long (0 = disabled) |
+| **Heater Max Run Time** | Safety cutoff (seconds) — heater is forced off and locked out if it runs continuously too long (0 = disabled) |
 | **Exhaust Safety Override** | When ON, prevents the exhaust from turning off above the safety thresholds, regardless of what triggered the turn-off |
 | **Exhaust Safety Max Temperature / Humidity** | The thresholds used by the exhaust safety |
 | **Grow Journal** | Use the dashboard text field to add dated notes; or call `small_grow_tent_controller.add_note` from an automation |
@@ -295,25 +305,9 @@ When everything is within limits, the **Day Mode** selector determines what runs
 
 MPC uses a first-order thermal model of your tent. The default parameters are pre-populated with values from a real 60×60cm grow tent — a reasonable starting point — but your tent will have different characteristics. For best results, identify the model from your own sensor history.
 
-### Option A — In-HA button (recommended)
-
-Press the **Re-identify MPC Model** button in the MPC Parameters section of the dashboard. The integration reads the last N days of sensor history directly from the HA recorder, runs OLS regression in the background, and updates all nine MPC parameter entities automatically. Results (R² values, sample count, fitted parameters) are written to the Grow Journal.
+Press the **Re-identify MPC Model** button in the MPC Parameters section of the dashboard. The integration reads the last N days of sensor history directly from the HA recorder, runs OLS regression in the background, and updates all MPC parameter entities automatically. Results (R² values, sample count, fitted parameters) are written to the Grow Journal.
 
 Configure how much history to use with the **MPC Identification Days** slider (default 7 days). Enable **MPC Auto-Identify Weekly** to have this run automatically once per week.
-
-### Option B — External script (advanced)
-
-The `mpc_identify.py` script in the repository root provides the same regression with additional validation plots. Useful if you want to visually inspect the model fit quality before committing to new parameters.
-
-```bash
-# Install dependencies
-pip install numpy scipy pandas matplotlib
-
-# Edit the CONFIGURATION section with your entity IDs and DB path, then run:
-python3 mpc_identify.py
-```
-
-The script generates `mpc_validation.png` and `mpc_residuals.png` showing predicted vs actual temperature and RH, and prints the identified parameters ready to paste into the dashboard sliders.
 
 ---
 
@@ -354,7 +348,7 @@ add_grow_note:
 Make sure you restarted Home Assistant after installation. Check **Settings → System → Logs** for any errors from `small_grow_tent_controller`.
 
 **Controller is stuck on `waiting_for_sensors`**
-One or more of your sensor entities is unavailable or returning a non-numeric value. Check that all four sensor entity IDs in the integration config are correct and reporting valid readings. A persistent notification is also shown on the dashboard when this happens.
+One or more of your sensor entities is unavailable or returning a non-numeric value. Check that all four sensor entity IDs in the integration config are correct and reporting valid readings. A persistent notification is also shown on the dashboard when this happens. The **Sensors Unavailable** binary sensor will also be ON.
 
 **Heater turned off unexpectedly**
 If sensors became unavailable while the heater was running, it will have been turned off automatically as a safety measure. Check the `last_action` sensor — if it shows `Heater OFF · sensors unavailable safety shutoff`, that's why. The heater will resume normal control once sensors recover.
@@ -366,19 +360,19 @@ Make sure the entity IDs you assigned in the config are `switch.*` entities and 
 The controller enforces the desired state every ~10 seconds. If a device isn't responding, check that the switch entity is reachable and not reporting `unavailable` in HA.
 
 **The exhaust fan won't turn off**
-If the Exhaust Safety is enabled and your temperature or humidity is above the safety thresholds, the fan will refuse to turn off regardless of the control mode or manual override. Check the `debug_exhaust_reason` sensor — if it contains `[SAFETY: blocked_off]`, that's why. Lower your safety thresholds, or disable the Exhaust Safety if conditions are truly safe.
+If the Exhaust Safety is enabled and your temperature or humidity is above the safety thresholds, the fan will refuse to turn off regardless of the control mode or manual override. Check the **Exhaust Reason** diagnostic sensor — if it contains `[SAFETY: blocked_off]`, that's why. Lower your safety thresholds, or disable the Exhaust Safety if conditions are truly safe.
 
 **Ambient temperature or humidity isn't updating**
-Check that your lung room sensor and/or outdoor weather entity are configured in **Settings → Devices & Services → Small Grow Tent Controller → Configure**. The `debug_ambient_source` diagnostic sensor (enable via Settings → Entities) shows which source is currently being used: `bedroom+weather`, `bedroom`, `weather`, or `static_slider`.
+Check that your lung room sensor and/or outdoor weather entity are configured in **Settings → Devices & Services → Small Grow Tent Controller → Configure**. The **MPC Ambient Source** diagnostic sensor (enable via Settings → Entities) shows which source is currently being used: `bedroom+weather`, `bedroom`, `weather`, or `static_slider`.
 
 **MPC doesn't seem to be improving**
-Check the `debug_mpc_pred_temp` and `debug_mpc_pred_vpd` diagnostic sensors. If predictions are far from actual values, press **Re-identify MPC Model** to fit the model to your current sensor history. If performance is still poor, try reducing the Switch Penalty weight to allow the controller to act more freely, or increase the horizon from 3 to 5–6 steps.
+Check the R² diagnostic sensors (**MPC Model R² Temp** and **MPC Model R² RH**) — values below 0.5 suggest the model is a poor fit for your tent. Press **Re-identify MPC Model** to fit the model to your current sensor history. If performance is still poor, try reducing the Switch Penalty weight to allow the controller to act more freely, or increase the horizon from 3 to 5–6 steps.
 
 **RLS is enabled but parameters are changing too fast / too slow**
 Adjust the **RLS Forgetting Factor (λ)**. At λ=0.999 (default) the model has an effective memory of ~2.8 hours, adapting to changes over days. Increase toward 1.000 for slower adaptation; decrease toward 0.990 for faster. If parameters drift to physically implausible values, press **Re-identify MPC Model** to reset them to a known-good baseline.
 
 **Something seems wrong with the logic**
-Enable the `debug_*` sensors via **Settings → Entities** — they show exactly what the controller is doing and why on every cycle. For deeper investigation, add the following to `configuration.yaml` and restart HA to enable debug logging:
+Enable the diagnostic sensors via **Settings → Entities** — they show exactly what the controller is doing and why on every cycle (exhaust reason, heater reason, heater target, etc.). For deeper investigation, add the following to `configuration.yaml` and restart HA to enable debug logging:
 
 ```yaml
 logger:
