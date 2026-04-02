@@ -56,10 +56,11 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         return True
 
     if entry.version == 3:
-        # v3 → v4: added optional ambient_temp and ambient_rh sensor fields
+        # v3 → v4: added optional ambient_temp, ambient_rh, and weather_entity fields
         data = dict(entry.data)
-        data.setdefault("ambient_temp", "")
-        data.setdefault("ambient_rh",   "")
+        data.setdefault("ambient_temp",   "")
+        data.setdefault("ambient_rh",     "")
+        data.setdefault("weather_entity", "")
         hass.config_entries.async_update_entry(entry, data=data, version=4)
         return True
 
@@ -83,7 +84,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     from .notes import async_setup_notes_store, async_setup_mpc_results_store
     await async_setup_notes_store(hass, entry)
-    await async_setup_mpc_results_store(hass, entry)
     await async_setup_mpc_results_store(hass, entry)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))

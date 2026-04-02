@@ -136,6 +136,10 @@ class ControlState:
     # Weekly auto-identification scheduling
     last_auto_identify:  datetime | None = None
 
+    # RLS transition guard — suppresses RLS updates for N polls after a
+    # day/night transition to avoid the grow light heat corrupting a_heater.
+    rls_transition_guard: int = 0
+
     # Last action recorded by the controller
     last_action: str = "none"
 
@@ -937,10 +941,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if mode != "Auto" and eid:
             if mode == "Day On":
                 if ctx.is_day:
-                    # In window — force on
+                    # In window — force on, but safety always wins
                     reason = "override:day_on (day window)"
-                    if self._exhaust_safety_blocks_off(ctx) or True:  # desired=True always here
-                        pass
+                    if self._exhaust_safety_blocks_off(ctx):
+                        reason += " [SAFETY: forced_on]"
                     ctx.data["debug_exhaust_reason"] = reason
                     cur = self._switch_is_on(eid)
                     if cur is not None and not cur:
@@ -2047,26 +2051,36 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------ #
 
     async def _reset_stage_targets(self, stage: str) -> None:
-        """Reset VPD target, temperature target, and RH target to stage defaults."""
-        from homeassistant.helpers.entity_component import EntityComponent
-        component: EntityComponent | None = self.hass.data.get("entity_components", {}).get("number")
-        if component is None:
-            return
+        """Reset VPD target, temperature target, and RH target to stage defaults.
 
+        Uses the entity registry and number.set_value service calls instead of
+        the deprecated hass.data["entity_components"] internal API, which is
+        unreliable across HA versions and may return None silently.
+        """
         targets = {
-            f"{self.entry.entry_id}_vpd_target_kpa":     STAGE_TARGET_VPD_KPA.get(stage, 1.00),
-            f"{self.entry.entry_id}_target_temp_c":      STAGE_TARGET_TEMP_C.get(stage, 25.0),
-            f"{self.entry.entry_id}_target_rh":          STAGE_TARGET_RH.get(stage, 55.0),
+            f"{self.entry.entry_id}_vpd_target_kpa":      STAGE_TARGET_VPD_KPA.get(stage, 1.00),
+            f"{self.entry.entry_id}_target_temp_c":       STAGE_TARGET_TEMP_C.get(stage, 25.0),
+            f"{self.entry.entry_id}_target_rh":           STAGE_TARGET_RH.get(stage, 55.0),
             f"{self.entry.entry_id}_night_vpd_target_kpa": STAGE_NIGHT_TARGET_VPD_KPA.get(stage, 1.00),
             f"{self.entry.entry_id}_night_target_temp_c":  STAGE_NIGHT_TARGET_TEMP_C.get(stage, 20.0),
             f"{self.entry.entry_id}_night_target_rh":      STAGE_NIGHT_TARGET_RH.get(stage, 55.0),
         }
 
-        for entity in component.entities:
-            uid = getattr(entity, "unique_id", None)
-            if uid in targets and hasattr(entity, "async_set_to_stage_default"):
-                await entity.async_set_to_stage_default(stage)
-                _LOGGER.debug("Stage target reset for %s → stage: %s", uid, stage)
+        registry = er.async_get(self.hass)
+        for unique_id_suffix, value in targets.items():
+            eid = registry.async_get_entity_id("number", DOMAIN, unique_id_suffix)
+            if eid is None:
+                _LOGGER.debug("Stage target reset: entity not found for unique_id=%s", unique_id_suffix)
+                continue
+            try:
+                await self.hass.services.async_call(
+                    "number", "set_value",
+                    {"entity_id": eid, "value": value},
+                    blocking=True,
+                )
+                _LOGGER.debug("Stage target reset %s → %.3f (stage: %s)", eid, value, stage)
+            except Exception as err:
+                _LOGGER.warning("Stage target reset failed for %s: %s", eid, err)
 
     # ------------------------------------------------------------------ #
     #  Main data update                                                    #

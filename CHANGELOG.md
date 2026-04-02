@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.1.67] - 2026-04-02
+
+### Fixed
+
+- **`rls_transition_guard` missing from `ControlState` dataclass** — the field was written and read every poll cycle but never declared in the dataclass. Python accepted the dynamic attribute injection at runtime, but the field was not initialised to a safe default on startup, meaning the first read after a fresh HA boot could hit an `AttributeError` on stricter Python/HA versions. Field added with default `0`.
+
+- **Duplicate `async_setup_mpc_results_store` call removed** — `__init__.py` called `async_setup_mpc_results_store()` twice in succession. The second call re-initialised the store object and overwrote the one attached to the coordinator, so persisted R² values loaded by the first call were immediately discarded. The duplicate line has been removed.
+
+- **Exhaust "Day On" safety check was dead code** — the safety override block in `_apply_forced_modes` contained `if self._exhaust_safety_blocks_off(ctx) or True: pass`, making the safety check always evaluate to `True` with a no-op body. The correct behaviour (annotate the debug reason string when safety is active) is now implemented.
+
+- **Duplicate `async_migrate_entry` in `config_flow.py` removed** — both `__init__.py` and `config_flow.py` defined `async_migrate_entry`. HA only calls the one in `__init__.py`, so the version in `config_flow.py` was never executed and was misleading dead code. Removed.
+
+- **`weather_entity` added to v3→v4 config migration** — the v3→v4 migration in `__init__.py` backfilled `ambient_temp` and `ambient_rh` but omitted `weather_entity`, which was also added in v4. Migrated entries from v3 or earlier could hit a missing-key lookup when the coordinator tried to read the weather entity setting. The field is now backfilled to `""` (disabled) during migration.
+
+- **`_reset_stage_targets` no longer uses deprecated internal HA API** — the method previously accessed `hass.data["entity_components"]["number"]`, an undocumented internal that returns `None` silently in several HA versions (causing stage resets to do nothing). Replaced with entity registry lookups + `number.set_value` service calls, the same pattern used everywhere else in the coordinator.
+
+---
+
 ## [0.1.66] - 2026-03-31
 
 ### Fixed

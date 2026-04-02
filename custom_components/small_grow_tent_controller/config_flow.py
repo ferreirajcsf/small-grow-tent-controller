@@ -58,25 +58,6 @@ def _bool_selector() -> selector.BooleanSelector:
     return selector.BooleanSelector(selector.BooleanSelectorConfig())
 
 
-async def async_migrate_entry(hass, config_entry: config_entries.ConfigEntry) -> bool:
-    """Migrate existing config entries to the current version.
-
-    v3 → v4: added optional ambient_temp and ambient_rh sensor fields.
-    These default to empty string (disabled) so all existing entries
-    continue to work without any user action required.
-    """
-    if config_entry.version < 4:
-        new_data = {**config_entry.data}
-        new_data.setdefault("ambient_temp", "")
-        new_data.setdefault("ambient_rh",   "")
-        hass.config_entries.async_update_entry(
-            config_entry,
-            data=new_data,
-            version=4,
-        )
-    return True
-
-
 class SmallGrowTentConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Config flow for Small Grow Tent Controller."""
 
