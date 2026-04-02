@@ -78,6 +78,10 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # v4 → v5: rename canopy_temp/top_temp/canopy_rh/top_rh to
         # temp_sensor_1/temp_sensor_2/rh_sensor_1/rh_sensor_2.
         # Sensor 3 slots default to empty (disabled).
+        # Both entry.data AND entry.options must be migrated — _get_option()
+        # checks options first, so stale old keys in options would shadow the
+        # correctly migrated keys in data, leaving temp_eids empty and the
+        # controller stuck in waiting_for_sensors.
         data = dict(entry.data)
         data[CONF_TEMP_SENSOR_1] = data.pop(_CONF_CANOPY_TEMP, "")
         data[CONF_TEMP_SENSOR_2] = data.pop(_CONF_TOP_TEMP,    "")
@@ -85,7 +89,17 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data[CONF_RH_SENSOR_1]   = data.pop(_CONF_CANOPY_RH,   "")
         data[CONF_RH_SENSOR_2]   = data.pop(_CONF_TOP_RH,      "")
         data[CONF_RH_SENSOR_3]   = ""
-        hass.config_entries.async_update_entry(entry, data=data, version=5)
+
+        options = dict(entry.options) if entry.options else {}
+        if _CONF_CANOPY_TEMP in options or _CONF_TOP_TEMP in options:
+            options[CONF_TEMP_SENSOR_1] = options.pop(_CONF_CANOPY_TEMP, "")
+            options[CONF_TEMP_SENSOR_2] = options.pop(_CONF_TOP_TEMP,    "")
+            options[CONF_TEMP_SENSOR_3] = options.get(CONF_TEMP_SENSOR_3, "")
+            options[CONF_RH_SENSOR_1]   = options.pop(_CONF_CANOPY_RH,   "")
+            options[CONF_RH_SENSOR_2]   = options.pop(_CONF_TOP_RH,      "")
+            options[CONF_RH_SENSOR_3]   = options.get(CONF_RH_SENSOR_3,  "")
+
+        hass.config_entries.async_update_entry(entry, data=data, options=options, version=5)
         return True
 
     if entry.version == 5:
