@@ -102,7 +102,7 @@ if (-not $NoGit) {
         $Overwrite = Read-Host "    Delete and recreate it? (y/N)"
         if ($Overwrite -eq "y" -or $Overwrite -eq "Y") {
             git tag -d $Tag | Out-Null
-            git push origin ":refs/tags/$Tag" 2>$null | Out-Null
+            $null = git push origin ":refs/tags/$Tag" 2>&1
             git tag -a $Tag -m $Tag
             Write-Host "    Tag recreated: $Tag" -ForegroundColor Green
         } else {
