@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.68] - 2026-04-02
+
+### Fixed
+
+- **Night Target Humidity stage defaults snapped to 0.5 step grid** — the auto-computed RH defaults for night stages (`STAGE_NIGHT_TARGET_RH`) were derived mathematically to hit exact VPD targets and landed on values like `59.2`, `46.9`, `40.9`, `29.1`, `41.3`. Because the slider step is `0.5`, starting from an off-grid value means every increment lands on `.4`/`.9` instead of `.0`/`.5`. All defaults rounded to the nearest `0.5` boundary: `59.0`, `50.5`, `47.0`, `41.0`, `29.0`, `41.5`. The VPD drift is negligible (< 0.02 kPa) and the slider now behaves identically to the day targets.
+
+---
+
 ## [0.1.67] - 2026-04-02
 
 ### Fixed

@@ -1,5 +1,5 @@
 DOMAIN = "small_grow_tent_controller"
-VERSION = "0.1.67"
+VERSION = "0.1.68"
 
 PLATFORMS = ["sensor", "switch", "select", "number", "time", "binary_sensor", "button"]
 
@@ -135,12 +135,12 @@ STAGE_NIGHT_TARGET_VPD_KPA = {
 }
 
 STAGE_NIGHT_TARGET_RH = {
-    "Seedling":          59.2,
+    "Seedling":          59.0,
     "Early Vegetative":  50.5,
-    "Late Vegetative":   46.9,
-    "Early Bloom":       40.9,
-    "Late Bloom":        29.1,
-    "Drying":            41.3,
+    "Late Vegetative":   47.0,
+    "Early Bloom":       41.0,
+    "Late Bloom":        29.0,
+    "Drying":            41.5,
 }
 
 # Exhaust mode extended options (day/night schedule awareness)
