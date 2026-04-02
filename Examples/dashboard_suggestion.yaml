@@ -8,9 +8,9 @@
 # ══════════════════════════════════════════════════════════════════
 #
 # Dependencies: layout-card, Mushroom cards, card-mod, fold-entity-row
-# Entity IDs to update: switch.lightgrowtent, switch.heatergrowtent,
-#   switch.circulationgrowtent, switch.exhaustgrowtent,
-#   switch.humidifiergrowtent, switch.dehumidifiergrowtent,
+# Entity IDs to update: switch.YOUR_LIGHT_SWITCH, switch.YOUR_HEATER_SWITCH,
+#   switch.YOUR_CIRCULATION_SWITCH, switch.YOUR_EXHAUST_SWITCH,
+#   switch.YOUR_HUMIDIFIER_SWITCH, switch.YOUR_DEHUMIDIFIER_SWITCH,
 #   sensor.canopy_temperature, sensor.top_temperature,
 #   sensor.canopy_humidity, sensor.top_humidity
 
@@ -601,7 +601,7 @@ views:
                   title: Grow Light
                   alignment: center
                 - type: custom:mushroom-entity-card
-                  entity: switch.lightgrowtent
+                  entity: switch.YOUR_LIGHT_SWITCH        # ← replace with your entity ID
                   name: Switch
                   icon: mdi:lightbulb-on-10
                   tap_action:
@@ -623,7 +623,7 @@ views:
                   title: Heater
                   alignment: center
                 - type: custom:mushroom-entity-card
-                  entity: switch.heatergrowtent
+                  entity: switch.YOUR_HEATER_SWITCH       # ← replace with your entity ID
                   name: Switch
                   icon: mdi:radiator
                   tap_action:
@@ -663,7 +663,7 @@ views:
                   title: Circulation Fan
                   alignment: center
                 - type: custom:mushroom-entity-card
-                  entity: switch.circulationgrowtent
+                  entity: switch.YOUR_CIRCULATION_SWITCH  # ← replace with your entity ID
                   name: Switch
                   icon: mdi:fan
                   tap_action:
@@ -685,7 +685,7 @@ views:
                   title: Exhaust Fan
                   alignment: center
                 - type: custom:mushroom-entity-card
-                  entity: switch.exhaustgrowtent
+                  entity: switch.YOUR_EXHAUST_SWITCH      # ← replace with your entity ID
                   name: Switch
                   icon: mdi:fan-chevron-up
                   tap_action:
@@ -729,7 +729,7 @@ views:
                   title: Humidifier
                   alignment: center
                 - type: custom:mushroom-entity-card
-                  entity: switch.humidifiergrowtent
+                  entity: switch.YOUR_HUMIDIFIER_SWITCH   # ← replace with your entity ID
                   name: Switch
                   icon: mdi:air-humidifier
                   tap_action:
@@ -760,7 +760,7 @@ views:
                   title: Dehumidifier
                   alignment: center
                 - type: custom:mushroom-entity-card
-                  entity: switch.dehumidifiergrowtent
+                  entity: switch.YOUR_DEHUMIDIFIER_SWITCH # ← replace with your entity ID
                   name: Switch
                   icon: mdi:water-off
                   tap_action:

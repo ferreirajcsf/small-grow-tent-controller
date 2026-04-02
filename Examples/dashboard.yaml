@@ -679,7 +679,7 @@ views:
                       type: vertical-stack
                       cards:
                         - type: custom:mushroom-entity-card
-                          entity: switch.lightgrowtent
+                          entity: switch.YOUR_LIGHT_SWITCH        # ← replace with your entity ID
                           name: Grow Light
                           icon: mdi:lightbulb-on-10
                           tap_action:
@@ -698,7 +698,7 @@ views:
                       type: vertical-stack
                       cards:
                         - type: custom:mushroom-entity-card
-                          entity: switch.heatergrowtent
+                          entity: switch.YOUR_HEATER_SWITCH       # ← replace with your entity ID
                           name: Heater
                           icon: mdi:radiator
                           tap_action:
@@ -717,7 +717,7 @@ views:
                       type: vertical-stack
                       cards:
                         - type: custom:mushroom-entity-card
-                          entity: switch.circulationgrowtent
+                          entity: switch.YOUR_CIRCULATION_SWITCH  # ← replace with your entity ID
                           name: Circulation Fan
                           icon: mdi:fan
                           tap_action:
@@ -736,7 +736,7 @@ views:
                       type: vertical-stack
                       cards:
                         - type: custom:mushroom-entity-card
-                          entity: switch.exhaustgrowtent
+                          entity: switch.YOUR_EXHAUST_SWITCH      # ← replace with your entity ID
                           name: Exhaust Fan
                           icon: mdi:fan-chevron-up
                           tap_action:
@@ -755,7 +755,7 @@ views:
                       type: vertical-stack
                       cards:
                         - type: custom:mushroom-entity-card
-                          entity: switch.humidifiergrowtent
+                          entity: switch.YOUR_HUMIDIFIER_SWITCH   # ← replace with your entity ID
                           name: Humidifier
                           icon: mdi:air-humidifier
                           tap_action:
@@ -774,7 +774,7 @@ views:
                       type: vertical-stack
                       cards:
                         - type: custom:mushroom-entity-card
-                          entity: switch.dehumidifiergrowtent
+                          entity: switch.YOUR_DEHUMIDIFIER_SWITCH # ← replace with your entity ID
                           name: Dehumidifier
                           icon: mdi:water-off
                           tap_action:
