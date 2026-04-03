@@ -28,12 +28,26 @@ async def async_setup_entry(
         VpdChaseSwitch(hass, entry),
         RlsSwitch(hass, entry),
         MpcAutoIdentifySwitch(hass, entry),
+        DisturbanceSwitch(hass, entry),
     ]
     if _is_enabled(entry, CONF_USE_EXHAUST, True):
         entities.append(ExhaustSafetyOverrideSwitch(hass, entry))
 
     async_add_entities(entities)
 
+
+class DisturbanceSwitch(_StoredSwitch):
+    """Manual disturbance trigger — turn ON before opening the tent to pre-emptively
+    suppress control actions for the disturbance hold period.  The controller turns
+    it back OFF automatically when the hold expires."""
+
+    _store_key  = "disturbance_active"
+    _default_on = False
+
+    def __init__(self, hass, entry):
+        super().__init__(hass, entry, "disturbance_active")
+        self._attr_name = "Disturbance Active"
+        self._attr_icon = "mdi:alert-circle-outline"
 
 class _StoredSwitch(SwitchEntity):
     """Base class for switches that persist their state to HA storage."""

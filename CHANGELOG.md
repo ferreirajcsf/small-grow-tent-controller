@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.71] - 2026-04-03
+
+### Added
+
+- **Sensor anomaly filter** — each temperature and humidity sensor slot is now individually filtered for implausible spikes before being averaged. If a reading changes by more than the configured **Anomaly Max Temp Delta** (default 3°C/poll) or **Anomaly Max RH Delta** (default 10%/poll) relative to the last accepted value, the spike is rejected and the last known good value is substituted instead. This prevents a single noisy sensor reading from momentarily distorting the average and causing the controller to fire the heater or exhaust unnecessarily.
+
+  If the same sensor stays anomalous for 5 or more consecutive polls (50 seconds) it is treated as a genuine sensor failure rather than a transient spike — the last good value is discarded and the normal sensor unavailability logic takes over. Both thresholds are configurable via number sliders (**Anomaly Max Temp Delta** and **Anomaly Max RH Delta**).
+
+- **Physical disturbance detection** — the controller now detects sudden correlated swings in averaged temperature and/or humidity that are characteristic of a tent door being opened (cold air rushing in, humidity jumping, etc.). When a swing exceeds the configured **Disturbance Temp Delta** (default 2°C/poll) or **Disturbance RH Delta** (default 8%/poll), a disturbance hold is triggered for the configured **Disturbance Hold Time** (default 120 seconds).
+
+  During the hold:
+  - All controllable devices (heater, exhaust, humidifier, dehumidifier) are set to **neutral state** (off) — no thrashing or overreaction while conditions are still settling
+  - Circulation fan is unaffected — it stays on as normal
+  - RLS adaptation is suppressed for the hold duration plus a safety margin to prevent anomalous readings from corrupting the model
+  - The `control_mode` sensor shows `disturbance_hold:<reason>` and the `Disturbance Hold Remaining` diagnostic sensor counts down the remaining seconds
+  - The `last_action` sensor records the trigger
+
+- **Manual disturbance switch** — a new **Disturbance Active** switch lets you pre-emptively trigger the hold before opening the tent, avoiding the few seconds of controller reaction that would otherwise occur while the auto-detector catches up. Turn it on before opening, turn it off when done (or let it expire automatically after the hold time).
+
+  All three thresholds and the hold time are tunable via number sliders in the integration's device page.
+
+---
+
 ## [0.1.70] - 2026-04-03
 
 ### Fixed

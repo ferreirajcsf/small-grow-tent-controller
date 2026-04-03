@@ -41,6 +41,13 @@ NUMBERS = [
     ("humidifier_hold_s",       "Humidifier Hold Time",         10.0, 600.0, 5.0,  45.0,  "s"),
     ("dehumidifier_hold_s",     "Dehumidifier Hold Time",       10.0, 600.0, 5.0,  45.0,  "s"),
     ("leaf_temp_offset_c",      "Leaf Temp Offset",             -5.0, 5.0,   0.1,  -1.5,  "°C"),
+    # Disturbance detection
+    ("disturbance_temp_delta_c","Disturbance Temp Delta",        0.5, 10.0,  0.5,  2.0,   "°C"),
+    ("disturbance_rh_delta",    "Disturbance RH Delta",          1.0, 30.0,  1.0,  8.0,   "%"),
+    ("disturbance_hold_s",      "Disturbance Hold Time",        10.0, 600.0, 10.0, 120.0, "s"),
+    # Sensor anomaly filter
+    ("anomaly_max_delta_temp_c","Anomaly Max Temp Delta",        0.5, 10.0,  0.5,  3.0,   "°C"),
+    ("anomaly_max_delta_rh",    "Anomaly Max RH Delta",          1.0, 30.0,  1.0,  10.0,  "%"),
     ("night_vpd_target_kpa",    "Night VPD Target",             0.40, 2.50,  0.01, 1.00,  "kPa"),
     ("night_target_temp_c",     "Night Target Temperature",     10.0, 35.0,  0.1,  20.0,  "°C"),
     ("night_target_rh",         "Night Target Humidity",        10.0, 95.0,  0.5,  55.0,  "%"),

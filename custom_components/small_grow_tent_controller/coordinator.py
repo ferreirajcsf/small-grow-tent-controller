@@ -141,6 +141,24 @@ class ControlState:
     # day/night transition to avoid the grow light heat corrupting a_heater.
     rls_transition_guard: int = 0
 
+    # Disturbance detection — physical tent disturbance (door open, etc.)
+    disturbance_active:       bool          = False
+    disturbance_until:        datetime | None = None
+    disturbance_reason:       str           = "none"
+
+    # Sensor anomaly filter — last known good value per sensor slot
+    # Keyed by sensor index 0/1/2 for temp and rh separately
+    last_good_temp: dict = None   # {0: float, 1: float, 2: float}
+    last_good_rh:   dict = None   # {0: float, 1: float, 2: float}
+    # Consecutive anomaly counter per sensor — if too many in a row it's a
+    # real failure, not a spike, and we let the normal unavailability logic handle it
+    anomaly_streak_temp: dict = None   # {0: int, 1: int, 2: int}
+    anomaly_streak_rh:   dict = None   # {0: int, 1: int, 2: int}
+
+    # Previous averaged readings — used for disturbance detection delta
+    prev_avg_temp: float | None = None
+    prev_avg_rh:   float | None = None
+
     # Last action recorded by the controller
     last_action: str = "none"
 
@@ -320,6 +338,131 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """Store the last action with a timestamp for the last_action sensor."""
         ts = dt_util.as_local(self._now()).strftime("%H:%M:%S")
         self.control.last_action = f"{description} @ {ts}"
+
+    # ------------------------------------------------------------------ #
+    #  Sensor anomaly filter                                               #
+    # ------------------------------------------------------------------ #
+
+    def _filter_sensor_readings(
+        self,
+        raw_temps: list[float | None],
+        raw_rhs:   list[float | None],
+        max_delta_temp: float,
+        max_delta_rh:   float,
+        max_streak: int = 5,
+    ) -> tuple[list[float | None], list[float | None]]:
+        """Per-sensor spike filter using last-known-good fallback.
+
+        For each sensor slot, if the new reading deviates from the last good
+        value by more than max_delta, the reading is rejected and the last
+        good value is substituted instead.  If a sensor stays anomalous for
+        more than max_streak consecutive polls it is treated as a genuine
+        sensor failure and None is returned so the normal unavailability
+        logic takes over.
+
+        Returns (filtered_temps, filtered_rhs).
+        """
+        ctrl = self.control
+
+        # Initialise dicts on first call
+        if ctrl.last_good_temp is None:
+            ctrl.last_good_temp = {}
+        if ctrl.last_good_rh is None:
+            ctrl.last_good_rh = {}
+        if ctrl.anomaly_streak_temp is None:
+            ctrl.anomaly_streak_temp = {}
+        if ctrl.anomaly_streak_rh is None:
+            ctrl.anomaly_streak_rh = {}
+
+        def _filter(values, last_good, streaks, max_delta):
+            filtered = []
+            for i, val in enumerate(values):
+                if val is None:
+                    filtered.append(None)
+                    continue
+
+                prev = last_good.get(i)
+                if prev is None:
+                    # No previous reading — accept and store
+                    last_good[i] = val
+                    streaks[i]   = 0
+                    filtered.append(val)
+                    continue
+
+                delta = abs(val - prev)
+                if delta > max_delta:
+                    streak = streaks.get(i, 0) + 1
+                    streaks[i] = streak
+                    if streak >= max_streak:
+                        # Too many consecutive anomalies — genuine failure
+                        # Clear last good so we don't hold a stale value forever
+                        last_good.pop(i, None)
+                        filtered.append(None)
+                        _LOGGER.warning(
+                            "%s: sensor slot %d anomalous for %d consecutive polls "
+                            "— treating as unavailable",
+                            self.entry.title, i, streak,
+                        )
+                    else:
+                        # Spike — substitute last good value
+                        _LOGGER.debug(
+                            "%s: sensor slot %d spike rejected "
+                            "(delta=%.2f > max=%.2f), using last good value %.2f",
+                            self.entry.title, i, delta, max_delta, prev,
+                        )
+                        filtered.append(prev)
+                else:
+                    # Normal reading — update last good and reset streak
+                    last_good[i] = val
+                    streaks[i]   = 0
+                    filtered.append(val)
+            return filtered
+
+        filtered_temps = _filter(raw_temps, ctrl.last_good_temp, ctrl.anomaly_streak_temp, max_delta_temp)
+        filtered_rhs   = _filter(raw_rhs,   ctrl.last_good_rh,   ctrl.anomaly_streak_rh,   max_delta_rh)
+        return filtered_temps, filtered_rhs
+
+    # ------------------------------------------------------------------ #
+    #  Physical disturbance detection                                      #
+    # ------------------------------------------------------------------ #
+
+    def _detect_disturbance(
+        self,
+        avg_temp: float | None,
+        avg_rh:   float | None,
+        dist_temp_delta: float,
+        dist_rh_delta:   float,
+        hold_seconds:    float,
+        now:             datetime,
+    ) -> str | None:
+        """Detect a physical disturbance (e.g. tent door opening).
+
+        Compares the current averaged readings against the previous poll.
+        Returns a reason string if a new disturbance is detected, None otherwise.
+        The caller is responsible for updating disturbance_until.
+        """
+        ctrl = self.control
+
+        if avg_temp is None or avg_rh is None:
+            return None
+        if ctrl.prev_avg_temp is None or ctrl.prev_avg_rh is None:
+            return None
+
+        delta_t = abs(avg_temp - ctrl.prev_avg_temp)
+        delta_r = abs(avg_rh   - ctrl.prev_avg_rh)
+
+        reason = None
+        if delta_t >= dist_temp_delta and delta_r >= dist_rh_delta:
+            reason = (
+                f"temp+rh swing detected "
+                f"(dT={delta_t:.1f}C dRH={delta_r:.1f}%)"
+            )
+        elif delta_t >= dist_temp_delta:
+            reason = f"temp swing detected (dT={delta_t:.1f}C)"
+        elif delta_r >= dist_rh_delta:
+            reason = f"rh swing detected (dRH={delta_r:.1f}%)"
+
+        return reason
 
     # ------------------------------------------------------------------ #
     #  Heater helpers                                                      #
@@ -2019,6 +2162,85 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             return data
 
+        # ------------------------------------------------------------------ #
+        #  Disturbance detection                                               #
+        # ------------------------------------------------------------------ #
+        dist_temp_delta  = float(data.get("disturbance_temp_delta_c", 2.0))
+        dist_rh_delta    = float(data.get("disturbance_rh_delta",     8.0))
+        dist_hold_s      = float(data.get("disturbance_hold_s",       120.0))
+
+        # Check if a manual disturbance was triggered via the button
+        manual_dist_eid = self._entity_id("switch", "disturbance_active")
+        manual_dist_on  = self._switch_is_on(manual_dist_eid) is True
+
+        if manual_dist_on and not self.control.disturbance_active:
+            self.control.disturbance_active = True
+            self.control.disturbance_until  = now + timedelta(seconds=dist_hold_s)
+            self.control.disturbance_reason = "manual trigger"
+            self._record_action(f"Disturbance hold started · manual trigger ({dist_hold_s:.0f}s)")
+            _LOGGER.info("%s: manual disturbance hold started", self.entry.title)
+
+        # Auto-detect disturbance from sensor swings
+        if not self.control.disturbance_active:
+            avg_t_val = data.get("avg_temp_c")
+            avg_r_val = data.get("avg_rh")
+            reason = self._detect_disturbance(
+                avg_t_val, avg_r_val,
+                dist_temp_delta, dist_rh_delta,
+                dist_hold_s, now,
+            )
+            if reason:
+                self.control.disturbance_active = True
+                self.control.disturbance_until  = now + timedelta(seconds=dist_hold_s)
+                self.control.disturbance_reason = reason
+                # Suppress RLS during disturbance — anomalous readings corrupt the model
+                self.control.rls_transition_guard = max(
+                    self.control.rls_transition_guard,
+                    int(dist_hold_s / 10) + 6,
+                )
+                self._record_action(f"Disturbance detected · {reason}")
+                _LOGGER.info("%s: disturbance detected — %s", self.entry.title, reason)
+
+        # Clear expired disturbance
+        if self.control.disturbance_active:
+            if self.control.disturbance_until and now >= self.control.disturbance_until:
+                self.control.disturbance_active = False
+                self.control.disturbance_until  = None
+                self.control.disturbance_reason = "none"
+                # Turn off manual switch if it was used
+                if manual_dist_on and manual_dist_eid:
+                    await self._async_switch(manual_dist_eid, False)
+                self._record_action("Disturbance hold ended — resuming control")
+                _LOGGER.info("%s: disturbance hold ended, resuming control", self.entry.title)
+
+        # Update data dict with disturbance state for sensors/debug
+        data["disturbance_active"] = self.control.disturbance_active
+        data["debug_disturbance_reason"] = self.control.disturbance_reason
+
+        # If disturbance is active: go to neutral state and skip control
+        if self.control.disturbance_active:
+            data["control_mode"] = f"disturbance_hold:{self.control.disturbance_reason}"
+            remaining = int((self.control.disturbance_until - now).total_seconds()) \
+                if self.control.disturbance_until else 0
+            data["debug_disturbance_remaining_s"] = remaining
+            # Neutral state: heater off, exhaust off, humidifier off, dehumidifier off
+            # Circulation stays on — it doesn't affect temp/rh control
+            for eid, label in [
+                (heater_eid,       "Heater"),
+                (exhaust_eid,      "Exhaust"),
+                (humidifier_eid,   "Humidifier"),
+                (dehumidifier_eid, "Dehumidifier"),
+            ]:
+                if eid and self._switch_is_on(eid):
+                    await self._async_switch(eid, False)
+            return data
+        else:
+            data["debug_disturbance_remaining_s"] = 0
+
+        # Update previous readings for next poll's disturbance detection
+        self.control.prev_avg_temp = data.get("avg_temp_c")
+        self.control.prev_avg_rh   = data.get("avg_rh")
+
         # Heater safety before anything else
         if await self._apply_heater_safety(ctx):
             return data
@@ -2052,6 +2274,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     await self._apply_vpd_chase(ctx)
                 else:
                     ctx.data["control_mode"] = "limits_only"
+
+        # Update previous readings for next poll's disturbance detection
+        self.control.prev_avg_temp = data.get("avg_temp_c")
+        self.control.prev_avg_rh   = data.get("avg_rh")
 
         return data
 
@@ -2105,8 +2331,22 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if self._get_option(k)
         ]
 
-        avg_t = avg([self._get_state_float(e) for e in temp_eids]) if temp_eids else None
-        avg_r = avg([self._get_state_float(e) for e in rh_eids])   if rh_eids   else None
+        # Read raw sensor values
+        raw_temps = [self._get_state_float(e) for e in temp_eids]
+        raw_rhs   = [self._get_state_float(e) for e in rh_eids]
+
+        # Read anomaly filter thresholds from number entities
+        _feid = lambda key: self._entity_id("number", key)
+        max_delta_temp = self._num(_feid("anomaly_max_delta_temp_c"), 3.0)
+        max_delta_rh   = self._num(_feid("anomaly_max_delta_rh"),     10.0)
+
+        # Apply per-sensor spike filter
+        filtered_temps, filtered_rhs = self._filter_sensor_readings(
+            raw_temps, raw_rhs, max_delta_temp, max_delta_rh
+        )
+
+        avg_t = avg(filtered_temps) if filtered_temps else None
+        avg_r = avg(filtered_rhs)   if filtered_rhs   else None
 
         leaf_off_eid  = self._entity_id("number", "leaf_temp_offset_c")
         leaf_offset_c = self._num(leaf_off_eid, 0.0)
@@ -2190,6 +2430,13 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "exhaust_safety_max_temp_c": self._num(_eid(CONF_EXHAUST_SAFETY_MAX_TEMP_C), 30.0),
             "exhaust_safety_max_rh":     self._num(_eid(CONF_EXHAUST_SAFETY_MAX_RH),     75.0),
             "heater_max_run_s":          self._num(_eid("heater_max_run_s"),              0.0),
+            # Disturbance detection thresholds
+            "disturbance_temp_delta_c": self._num(_eid("disturbance_temp_delta_c"), 2.0),
+            "disturbance_rh_delta":     self._num(_eid("disturbance_rh_delta"),     8.0),
+            "disturbance_hold_s":       self._num(_eid("disturbance_hold_s"),       120.0),
+            # Anomaly filter thresholds (also read earlier before averaging, re-included for sensor display)
+            "anomaly_max_delta_temp_c": self._num(_eid("anomaly_max_delta_temp_c"), 3.0),
+            "anomaly_max_delta_rh":     self._num(_eid("anomaly_max_delta_rh"),     10.0),
             "light_on_time":   self._parse_time(self._get_entity_state(_eid("light_on",  "time")), _DEFAULT_LIGHT_ON),
             "light_off_time":  self._parse_time(self._get_entity_state(_eid("light_off", "time")), _DEFAULT_LIGHT_OFF),
             "control_mode":    "init",
@@ -2220,6 +2467,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "debug_mpc_pred_vpd":   None,
             "debug_mpc_plan":       "n/a",
             "debug_ambient_source": "static_slider",
+            # Disturbance detection
+            "disturbance_active":              False,
+            "debug_disturbance_reason":        "none",
+            "debug_disturbance_remaining_s":   0,
             # MPC identification results (updated by button/auto)
             "mpc_r2_temp":          self.control.mpc_r2_temp,
             "mpc_r2_rh":            self.control.mpc_r2_rh,

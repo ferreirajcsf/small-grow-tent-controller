@@ -61,6 +61,10 @@ SENSORS = [
     ("mpc_r2_rh",    "MPC Model R² RH",    None,  None,  True),
     ("mpc_last_identified",  "MPC Last Identified",   None, None, True),
     ("debug_ambient_source", "MPC Ambient Source",    None, None, True),
+    # Disturbance detection
+    ("disturbance_active",             "Disturbance Active",          None, None, False),
+    ("debug_disturbance_reason",       "Disturbance Reason",          None, None, True),
+    ("debug_disturbance_remaining_s",  "Disturbance Hold Remaining",  None, "s",  True),
 ]
 
 # Numeric sensors that should be recorded in long-term statistics
