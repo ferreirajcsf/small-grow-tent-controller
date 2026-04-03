@@ -141,8 +141,12 @@ if (-not $NoGit) {
             Compress-Archive -Path $RepoRoot -DestinationPath $ZipPath
 
             $ReleaseExists = $false
-            gh release view $Tag 2>$null | Out-Null
-            if ($LASTEXITCODE -eq 0) { $ReleaseExists = $true }
+            try {
+                $null = gh release view $Tag 2>&1
+                if ($LASTEXITCODE -eq 0) { $ReleaseExists = $true }
+            } catch {
+                $ReleaseExists = $false
+            }
 
             if (-not $ReleaseExists) {
                 Write-Host "    Creating GitHub release $Tag..." -ForegroundColor Yellow
