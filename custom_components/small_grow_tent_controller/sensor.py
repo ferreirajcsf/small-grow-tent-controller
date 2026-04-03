@@ -41,6 +41,21 @@ SENSORS = [
     ("debug_heater_on_for_s","Heater On For",             None,                          "s",   True),
     ("debug_heater_max_run_s","Heater Max Run",           None,                          "s",   True),
     ("debug_heater_lockout", "Heater Lockout",            None,                          None,  True),
+    # Humidity/circulation device reasons
+    ("debug_humidifier_reason",   "Humidifier Reason",   None,  None,  True),
+    ("debug_dehumidifier_reason", "Dehumidifier Reason", None,  None,  True),
+    ("debug_circulation_reason",  "Circulation Reason",  None,  None,  True),
+    # Temperature target diagnostics
+    ("debug_target_temp_c",       "Debug Target Temp",   SensorDeviceClass.TEMPERATURE, "°C",  True),
+    ("debug_target_rh",           "Debug Target RH",     None,                          "%",   True),
+    ("debug_ramped_target_temp_c","Ramped Target Temp",  SensorDeviceClass.TEMPERATURE, "°C",  True),
+    # MPC runtime diagnostics
+    ("debug_mpc_horizon",   "MPC Horizon",        None,  None,   True),
+    ("debug_mpc_score",     "MPC Score",          None,  None,   True),
+    ("debug_mpc_pred_temp", "MPC Predicted Temp", SensorDeviceClass.TEMPERATURE, "°C",  True),
+    ("debug_mpc_pred_rh",   "MPC Predicted RH",   None,  "%",   True),
+    ("debug_mpc_pred_vpd",  "MPC Predicted VPD",  None,  "kPa", True),
+    ("debug_mpc_plan",      "MPC Action Plan",    None,  None,   True),
     # MPC model identification results
     ("mpc_r2_temp",  "MPC Model R² Temp",  None,  None,  True),
     ("mpc_r2_rh",    "MPC Model R² RH",    None,  None,  True),

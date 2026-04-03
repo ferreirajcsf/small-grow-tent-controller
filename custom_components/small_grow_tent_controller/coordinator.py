@@ -4,7 +4,6 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta, time
 from typing import Any
-import asyncio
 
 from homeassistant.components import persistent_notification
 from homeassistant.core import HomeAssistant
@@ -2271,7 +2270,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Apply effective ambient and write back to number entities
         async def _apply_amb(val: float, key: str, threshold: float) -> None:
             data[key] = val
-            num_eid = self._entity_id("number", key.replace("mpc_", "mpc_"))
+            num_eid = self._entity_id("number", key)
             if num_eid and self._get_entity_state(num_eid) not in (None, "unavailable"):
                 try:
                     current = float(self._get_entity_state(num_eid) or 0)

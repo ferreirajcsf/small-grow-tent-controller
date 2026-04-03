@@ -1,14 +1,40 @@
 # Changelog
 
+## [0.1.70] - 2026-04-03
+
+### Fixed
+
+- **Unused `asyncio` import removed** — `import asyncio` was present at the top of `coordinator.py` but never referenced anywhere in the file. Removed to keep imports clean and avoid any misleading impression that async primitives are being used directly.
+
+- **No-op `.replace()` removed from `_apply_amb`** — the ambient update helper contained `key.replace("mpc_", "mpc_")` which replaces a prefix with itself and does nothing. The entity ID lookup worked correctly despite this, but the dead code was confusing. Simplified to `self._entity_id("number", key)`.
+
+- **Missing debug sensor entities added** — thirteen `debug_*` keys were written to the coordinator data dict every poll cycle but never registered as HA sensor entities, making them invisible in the UI even after enabling debug sensors via Settings → Entities. All thirteen are now registered as hidden diagnostic sensors:
+  - `Humidifier Reason` — why the humidifier was turned on or off
+  - `Dehumidifier Reason` — why the dehumidifier was turned on or off
+  - `Circulation Reason` — why the circulation fan was turned on or off
+  - `Debug Target Temp` — effective temperature target being chased this cycle
+  - `Debug Target RH` — effective RH target being chased this cycle
+  - `Ramped Target Temp` — current ramped temperature target (slides toward actual target at ramp rate)
+  - `MPC Horizon` — number of planning steps used by MPC this cycle
+  - `MPC Score` — cost of the chosen MPC action plan (lower is better)
+  - `MPC Predicted Temp` — temperature predicted at the end of the MPC horizon
+  - `MPC Predicted RH` — RH predicted at the end of the MPC horizon
+  - `MPC Predicted VPD` — VPD predicted at the end of the MPC horizon
+  - `MPC Action Plan` — the first 3 steps of the chosen heater/exhaust action sequence
+
+  All are hidden by default — enable individually via **Settings → Entities**.
+
+---
+
 ## [0.1.69] - 2026-04-02
 
 ### Changed
 
-- **Flexible sensor configuration — 1 to 3 temperature and humidity sensors** — the integration no longer requires exactly two fixed sensor slots ("canopy" and "top"). You can now assign 1, 2, or 3 temperature sensors and 1, 2, or 3 humidity sensors. All configured sensors are averaged together each poll cycle. Sensor 1 is required; Sensors 2 and 3 are optional. This is a **breaking config change** — existing installs are migrated automatically (config version v4 → v5): your former canopy sensor becomes Temperature Sensor 1, your former top sensor becomes Temperature Sensor 2, and Sensor 3 slots are left empty.
+- **Flexible sensor configuration — 1 to 3 temperature and humidity sensors** — the integration previously required exactly four sensor slots labelled "Canopy Temperature", "Top Temperature", "Canopy Humidity", and "Top Humidity". This naming was specific to a two-sensor-per-axis setup and made the integration confusing for anyone with a single sensor or a different placement. The four fixed slots have been replaced with **Temperature Sensor 1** (required), **Temperature Sensor 2** (optional), **Temperature Sensor 3** (optional), and the same three slots for humidity. All sensors that are configured are averaged together on every poll cycle — the same `avg()` function that previously averaged the two slots now averages however many you have provided. A single sensor is fully supported with no workarounds needed.
 
-### Migration note
+  The MPC model identification button also benefits from this change — it fetches history for all configured sensors, averages their readings at each timestep, and fits the thermal model against the combined average. Previously it required both the "canopy" and "top" sensors to have history; it now only requires at least the first sensor to have data.
 
-No action required for existing installs. HA will run the migration automatically on first load after updating. If you only ever had one physical sensor and pointed both the old "canopy" and "top" slots at the same entity, after migration you will have Temperature Sensor 1 and 2 pointing at the same entity — you can clear Sensor 2 in **Settings → Devices & Services → Small Grow Tent Controller → Configure** if you prefer.
+  **This is a config schema change (v4 → v5).** Existing installs are migrated automatically on first load — `canopy_temp` becomes `temp_sensor_1`, `top_temp` becomes `temp_sensor_2`, `canopy_rh` becomes `rh_sensor_1`, `top_rh` becomes `rh_sensor_2`, and the third slots are left empty. No user action is required. If you previously had a single physical sensor and pointed both the canopy and top slots at the same entity, after migration you will have Sensor 1 and Sensor 2 pointing at the same entity — you can clear Sensor 2 in **Settings → Devices & Services → Small Grow Tent Controller → Configure** if preferred.
 
 ---
 
