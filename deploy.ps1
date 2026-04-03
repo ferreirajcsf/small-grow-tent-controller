@@ -140,8 +140,11 @@ if (-not $NoGit) {
             if (Test-Path $ZipPath) { Remove-Item $ZipPath }
             Compress-Archive -Path $RepoRoot -DestinationPath $ZipPath
 
-            $ReleaseCheck = gh release view $Tag 2>$null
-            if ($LASTEXITCODE -ne 0) {
+            $ReleaseExists = $false
+            gh release view $Tag 2>$null | Out-Null
+            if ($LASTEXITCODE -eq 0) { $ReleaseExists = $true }
+
+            if (-not $ReleaseExists) {
                 Write-Host "    Creating GitHub release $Tag..." -ForegroundColor Yellow
                 gh release create $Tag $ZipPath --title "$Tag" --notes "See CHANGELOG.md for details."
             } else {
