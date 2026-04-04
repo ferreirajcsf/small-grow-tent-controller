@@ -63,7 +63,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         # (vpd_chase_enabled, vpd_target_kpa) are created with safe defaults
         # by their respective entity classes on first load.
         hass.config_entries.async_update_entry(entry, version=3)
-        return True
+        # Fall through to v3 → v4
 
     if entry.version == 3:
         # v3 → v4: added optional ambient_temp, ambient_rh, and weather_entity fields
@@ -72,7 +72,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         data.setdefault("ambient_rh",     "")
         data.setdefault("weather_entity", "")
         hass.config_entries.async_update_entry(entry, data=data, version=4)
-        return True
+        # Fall through to v4 → v5
 
     if entry.version == 4:
         # v4 → v5: rename canopy_temp/top_temp/canopy_rh/top_rh to
@@ -100,7 +100,7 @@ async def async_migrate_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             options[CONF_RH_SENSOR_3]   = options.get(CONF_RH_SENSOR_3,  "")
 
         hass.config_entries.async_update_entry(entry, data=data, options=options, version=5)
-        return True
+        # Fall through to v5
 
     if entry.version == 5:
         return True

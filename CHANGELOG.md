@@ -1,6 +1,37 @@
 # Changelog
 
+## [0.1.72] - 2026-04-04
+
+### Fixed
+
+- **Migration chain broken for v1 entries** — users upgrading from config schema v1 would have their migration stop at v2, never reaching v3–v5. This meant they were missing the `ambient_temp`, `ambient_rh`, and `weather_entity` fields (added in v3→v4) and the sensor slot rename from `canopy_temp`/`top_temp` to `temp_sensor_1`/`temp_sensor_2` (added in v4→v5), leaving the integration stuck in `waiting_for_sensors` after upgrade. The v2, v3, and v4 migration blocks now fall through correctly to the next step instead of returning early.
+
+- **Disturbance detection: delta computed against itself on first poll after hold** — `prev_avg_temp` and `prev_avg_rh` were written twice per poll cycle: once inside the disturbance-active block before it returned early, and again at the bottom of the control method. The premature write inside the disturbance block meant the first poll after a hold ended was always comparing the current reading against itself (delta = 0), suppressing auto-detection for that cycle. The redundant early write has been removed; only the single write at the bottom of the cycle remains.
+
+- **Disturbance neutral block did not update hold timers** — when the disturbance hold switched devices off, `last_heater_change`, `last_exhaust_change`, `last_humidifier_change`, and `last_dehumidifier_change` were not updated. This meant hold times were not respected on the first poll after disturbance recovery — the controller could immediately re-toggle any device it had just switched off. Each device's change timestamp is now correctly updated when it is switched off during a disturbance hold.
+
+- **RLS debug log computed innovation with post-update parameters** — the `innovation_t` and `innovation_r` values logged at debug level were computed using `ctrl.rls_theta_t` / `ctrl.rls_theta_r` *after* those fields had already been overwritten with the new parameter estimates. The logged values were therefore not the true pre-update prediction error. Both innovations are now captured before the RLS update runs and the correct pre-update values are logged.
+
+- **MPC horizon fallback default was 18 instead of 3** — if the `mpc_horizon_steps` number entity was unavailable during HA startup (before entities are restored), the coordinator fell back to a default of 18. The number entity's configured maximum is 6, and `_apply_mpc_day` / `_apply_night_mpc` clamp to 6 — so no incorrect output occurred, but the clamp warning fired every cycle for ~60 seconds during startup. The fallback now matches the entity default of 3.
+
+- **MPC model identification accessed `hass` from a worker thread** — `get_states_sync` was a closure that captured `self.hass` and called `get_significant_states(self.hass, ...)` inside `async_add_executor_job`. Accessing HA's state machine from a worker thread is not thread-safe. Recorder history is now fetched in full on the event loop before the executor job is dispatched. `_run_identification` receives only plain Python data (a pre-fetched `dict[str, list[tuple[float, str]]]`) and never touches `hass` from the worker thread.
+
+- **`NotesStore` used timezone-naive timestamps** — journal entry timestamps were generated with `datetime.now().strftime(...)`, producing local-naive datetimes that could be wrong if HA's configured timezone differs from the OS timezone. Timestamps now use `dt_util.as_local(dt_util.utcnow())`, consistent with the rest of the integration.
+
+- **Disabled controller did not apply exhaust safety as a baseline** — when the controller was disabled and the exhaust override was set to `Off`, the code already checked the safety thresholds to keep the exhaust on — but the comment and intent were ambiguous about whether this was gated on the `ExhaustSafetyOverride` switch being enabled. The behaviour has been clarified and hardened: the threshold check in the disabled block is an **unconditional baseline safety** that applies regardless of whether `ExhaustSafetyOverride` is on or off. A tent can overheat whether the controller is running or not.
+
+### Removed
+
+- **Dead `_stop_reducing_humidity` helper** — this method (which turned off the dehumidifier or exhaust fan to mirror `_reduce_humidity`) was defined in the coordinator but never called. All call sites used `_dehumidifier_off` or `_exhaust_off_if_on` directly. Removed to eliminate dead code.
+
+### Changed
+
+- **Config flow device switch selectors now restricted to `switch` domain** — the entity selectors for heater, exhaust, humidifier, dehumidifier, circulation, and light were previously configured with `domain=["switch", "sensor"]`, allowing sensor entities to be accidentally assigned as device switches. The selectors now accept only `switch` entities. This affects both the initial setup flow and the options flow.
+
+---
+
 ## [0.1.71] - 2026-04-03
+
 
 ### Added
 

@@ -532,19 +532,24 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         entity_heater: str,
         entity_exhaust: str,
         history_days: int,
-        hass_states_getter,   # callable: (entity_id) -> list of (ts, state_str)
+        prefetched_history: dict,
         temp_amb_estimate: float,
         rh_amb_estimate: float,
     ) -> dict:
         """Pure CPU work — runs in a thread-pool executor.
 
-        Pulls state history for all configured temperature and RH sensors plus
-        heater and exhaust, resamples to 10-second intervals, averages all
-        sensor readings at each timestep, fits the thermal and humidity models
-        via OLS, and returns a dict of fitted parameters and R² values.
+        Receives pre-fetched history as plain Python data (no hass access).
+        The caller fetches all recorder history on the event loop first and
+        passes it in as a dict keyed by entity_id -> list of (timestamp, state_str).
+        This avoids accessing hass internals from a worker thread.
 
-        Accepts 1–3 temperature sensor IDs and 1–3 RH sensor IDs.
+        Resamples all series to 10-second intervals, averages sensor readings,
+        fits the thermal and humidity models via OLS, and returns fitted params.
+
+        Accepts 1-3 temperature sensor IDs and 1-3 RH sensor IDs.
         """
+        def hass_states_getter(entity_id: str) -> list:
+            return prefetched_history.get(entity_id, [])
         RESAMPLE_S = 10
 
         def parse_numeric(rows):
@@ -676,14 +681,15 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     async def async_identify_model(self) -> dict:
         """Trigger MPC model identification from HA history.
 
-        Fetches state history via the HA recorder, runs OLS regression in
-        a thread executor, writes the fitted parameters back to the MPC
-        number entities, records the result in the Grow Journal, and updates
-        the R² diagnostic sensors.
+        Fetches all state history on the event loop (thread-safe), then runs
+        OLS regression in a thread executor using only plain Python data.
+        Writes the fitted parameters back to the MPC number entities, records
+        the result in the Grow Journal, and updates the R² diagnostic sensors.
 
         Returns the result dict (or an error dict).
         """
         from homeassistant.components import recorder as rec_comp
+        from homeassistant.components.recorder.history import get_significant_states
 
         _LOGGER.info("%s: Starting MPC model identification", self.entry.title)
 
@@ -709,35 +715,45 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         start = dt_util.utcnow() - timedelta(days=history_days)
         end   = dt_util.utcnow()
 
-        # Build a synchronous state getter using the recorder instance
-        # This runs in the executor so we use the sync history API
+        # Fetch all recorder history on the event loop (thread-safe).
+        # We convert state objects to plain (timestamp, state_str) tuples
+        # immediately so the executor receives only pure Python data and
+        # never needs to touch hass internals from a worker thread.
+        all_eids = temp_sensors + rh_sensors + [heater, exhaust]
+        prefetched: dict[str, list[tuple[float, str]]] = {}
+
         recorder_instance = rec_comp.get_instance(self.hass)
 
-        def get_states_sync(entity_id: str) -> list[tuple[float, str]]:
-            """Fetch (timestamp, state_str) pairs from recorder history."""
-            from homeassistant.components.recorder.history import get_significant_states
+        # get_significant_states must be called from the event loop
+        try:
             states_map = get_significant_states(
                 self.hass,
                 start,
                 end,
-                entity_ids=[entity_id],
+                entity_ids=all_eids,
                 significant_changes_only=False,
             )
-            rows = []
-            for state in states_map.get(entity_id, []):
+        except Exception as err:
+            _LOGGER.error("%s: Failed to fetch recorder history: %s", self.entry.title, err)
+            return {"error": f"recorder history fetch failed: {err}"}
+
+        for eid in all_eids:
+            rows: list[tuple[float, str]] = []
+            for state in states_map.get(eid, []):
                 if state.state not in ("unavailable", "unknown", ""):
                     rows.append((state.last_updated.timestamp(), state.state))
-            return rows
+            prefetched[eid] = rows
 
         temp_amb = float(self.data.get("mpc_temp_amb", 20.0)) if self.data else 20.0
         rh_amb   = float(self.data.get("mpc_rh_amb",   55.0)) if self.data else 55.0
 
-        # Run the CPU-intensive work off the event loop
+        # Run the CPU-intensive OLS work off the event loop.
+        # _run_identification receives only plain Python data — no hass access.
         result = await recorder_instance.async_add_executor_job(
             self._run_identification,
             temp_sensors, rh_sensors, heater, exhaust,
             history_days,
-            get_states_sync,
+            prefetched,
             temp_amb, rh_amb,
         )
 
@@ -902,6 +918,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ctrl.rls_P_t = [init_var if i == j else 0.0
                             for i in range(4) for j in range(4)]
 
+        # Capture innovation (prediction error) using pre-update parameters
+        # before _rls_update overwrites them — used only for debug logging below.
+        innov_t = d_temp - sum(phi_t[i] * ctrl.rls_theta_t[i] for i in range(4))
+
         theta_t_new, P_t_new = self._rls_update(
             ctrl.rls_theta_t, ctrl.rls_P_t, phi_t, d_temp, lam
         )
@@ -924,6 +944,9 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ]
             ctrl.rls_P_r = [init_var if i == j else 0.0
                             for i in range(3) for j in range(3)]
+
+        # Capture RH innovation using pre-update parameters
+        innov_r = d_rh - sum(phi_r[i] * ctrl.rls_theta_r[i] for i in range(3))
 
         theta_r_new, P_r_new = self._rls_update(
             ctrl.rls_theta_r, ctrl.rls_P_r, phi_r, d_rh, lam
@@ -977,8 +1000,8 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self.entry.title,
             theta_t_new[0], theta_t_new[1], theta_t_new[2],
             theta_r_new[0],
-            d_temp - sum(phi_t[i] * ctrl.rls_theta_t[i] for i in range(4)),
-            d_rh   - sum(phi_r[i] * ctrl.rls_theta_r[i] for i in range(3)),
+            innov_t,
+            innov_r,
         )
 
         # ------------------------------------------------------------------ #
@@ -1882,13 +1905,6 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         else:
             await self._exhaust_on_if_off(ctx, f"{reason} [fallback: exhaust]")
 
-    async def _stop_reducing_humidity(self, ctx: _Ctx, reason: str = "auto") -> None:
-        """Stop active humidity reduction — mirrors _reduce_humidity."""
-        if ctx.dehumidifier_eid:
-            await self._dehumidifier_off(ctx, reason)
-        else:
-            await self._exhaust_off_if_on(ctx, f"{reason} [fallback: exhaust]")
-
     async def _circ_on(self, ctx: _Ctx, reason: str = "auto") -> None:
         if not ctx.circ_on and ctx.circ_eid:
             await self._async_switch(ctx.circ_eid, True)
@@ -1995,6 +2011,13 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     continue
                 desired = mode == "On"
                 if label == "Exhaust" and mode == "Off":
+                    # Baseline exhaust safety: always keep exhaust on when conditions
+                    # exceed the configured thresholds, regardless of whether the
+                    # ExhaustSafetyOverride switch is enabled. The override switch
+                    # governs behaviour during normal operation; this is an
+                    # unconditional floor that applies even when the controller is
+                    # disabled and the override switch is off — a tent can overheat
+                    # whether the controller is running or not.
                     avg_t = data.get("avg_temp_c")
                     avg_r = data.get("avg_rh")
                     if avg_t is not None and avg_r is not None:
@@ -2065,7 +2088,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             night_target_rh    = float(data.get("night_target_rh",      55.0)),
             temp_ramp_rate     = float(data.get("temp_ramp_rate_c_per_min", 1.0)),
             day_mode           = data.get("day_mode", "VPD Chase"),
-            mpc_horizon        = int(data.get("mpc_horizon_steps", 18)),
+            mpc_horizon        = int(data.get("mpc_horizon_steps", 3)),
             mpc_temp_amb       = float(data.get("mpc_temp_amb",    20.0)),
             mpc_rh_amb         = float(data.get("mpc_rh_amb",      55.0)),
             mpc_a_heater       = float(data.get("mpc_a_heater",     0.423)),
@@ -2223,23 +2246,23 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             remaining = int((self.control.disturbance_until - now).total_seconds()) \
                 if self.control.disturbance_until else 0
             data["debug_disturbance_remaining_s"] = remaining
-            # Neutral state: heater off, exhaust off, humidifier off, dehumidifier off
-            # Circulation stays on — it doesn't affect temp/rh control
-            for eid, label in [
-                (heater_eid,       "Heater"),
-                (exhaust_eid,      "Exhaust"),
-                (humidifier_eid,   "Humidifier"),
-                (dehumidifier_eid, "Dehumidifier"),
+            # Neutral state: heater off, exhaust off, humidifier off, dehumidifier off.
+            # Circulation stays on — it doesn't affect temp/rh control.
+            # Update last_*_change so hold timers reset correctly after recovery —
+            # without this the controller could immediately re-toggle devices the
+            # moment the disturbance hold expires.
+            for eid, label, hold_attr in [
+                (heater_eid,       "Heater",       "last_heater_change"),
+                (exhaust_eid,      "Exhaust",      "last_exhaust_change"),
+                (humidifier_eid,   "Humidifier",   "last_humidifier_change"),
+                (dehumidifier_eid, "Dehumidifier", "last_dehumidifier_change"),
             ]:
                 if eid and self._switch_is_on(eid):
                     await self._async_switch(eid, False)
+                    setattr(self.control, hold_attr, now)
             return data
         else:
             data["debug_disturbance_remaining_s"] = 0
-
-        # Update previous readings for next poll's disturbance detection
-        self.control.prev_avg_temp = data.get("avg_temp_c")
-        self.control.prev_avg_rh   = data.get("avg_rh")
 
         # Heater safety before anything else
         if await self._apply_heater_safety(ctx):
@@ -2401,7 +2424,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "night_mode":         self._get_entity_state(_eid(CONF_NIGHT_MODE, "select")) or "Dew Protection",
             "day_mode":           self._get_entity_state(_eid(CONF_DAY_MODE, "select")) or "VPD Chase",
             # MPC parameters
-            "mpc_horizon_steps":  int(self._num(_eid("mpc_horizon_steps"), 18)),
+            "mpc_horizon_steps":  int(self._num(_eid("mpc_horizon_steps"), 3)),
             "mpc_temp_amb":       self._num(_eid("mpc_temp_amb"),   20.0),
             "mpc_rh_amb":         self._num(_eid("mpc_rh_amb"),     55.0),
             "mpc_a_heater":       self._num(_eid("mpc_a_heater"),    0.423),

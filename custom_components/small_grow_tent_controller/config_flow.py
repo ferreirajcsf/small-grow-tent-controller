@@ -37,8 +37,9 @@ from .const import (
 
 
 def _entity_selector() -> selector.EntitySelector:
+    """Switch-only selector for device control entities."""
     return selector.EntitySelector(
-        selector.EntitySelectorConfig(domain=["switch", "sensor"])
+        selector.EntitySelectorConfig(domain=["switch"])
     )
 
 

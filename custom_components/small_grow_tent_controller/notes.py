@@ -14,7 +14,6 @@ in sensor.py and button.py respectively.  This file provides:
 from __future__ import annotations
 
 import logging
-from datetime import datetime
 from typing import Any
 
 from homeassistant.components.button import ButtonEntity
@@ -22,6 +21,7 @@ from homeassistant.components.sensor import SensorEntity
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, ServiceCall
 from homeassistant.helpers.storage import Store
+from homeassistant.util import dt as dt_util
 
 from .device_info import device_info_for_entry
 from .const import DOMAIN
@@ -49,7 +49,7 @@ class NotesStore:
         return list(self._notes)
 
     async def async_add(self, text: str) -> None:
-        ts = datetime.now().strftime("%Y-%m-%d %H:%M")
+        ts = dt_util.as_local(dt_util.utcnow()).strftime("%Y-%m-%d %H:%M")
         self._notes.append({"ts": ts, "text": text.strip()})
         if len(self._notes) > _MAX_NOTES:
             self._notes = self._notes[-_MAX_NOTES:]
