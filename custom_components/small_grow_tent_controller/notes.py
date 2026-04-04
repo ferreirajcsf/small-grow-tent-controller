@@ -213,7 +213,6 @@ async def async_setup_mpc_results_store(
     entry,
 ) -> "MpcResultsStore":
     """Create, load, and attach the MpcResultsStore to the coordinator."""
-    from homeassistant.helpers.entity_component import EntityComponent
     from .coordinator import GrowTentCoordinator
     coordinator: GrowTentCoordinator = hass.data[DOMAIN][entry.entry_id]
     store = MpcResultsStore(hass, entry.entry_id)

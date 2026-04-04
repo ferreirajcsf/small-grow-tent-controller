@@ -48,8 +48,10 @@ async def async_setup_entry(
     entities: list[BinarySensorEntity] = [
         GrowTentUseFlagBinarySensor(entry, desc) for desc in USE_FLAGS
     ]
-    # New in v0.1.15 — sensor availability problem indicator
+    # Sensor availability problem indicator
     entities.append(SensorsUnavailableBinarySensor(entry, coordinator))
+    # Disturbance hold indicator
+    entities.append(DisturbanceActiveBinarySensor(entry, coordinator))
 
     async_add_entities(entities)
 
@@ -101,3 +103,26 @@ class SensorsUnavailableBinarySensor(CoordinatorEntity, BinarySensorEntity):
     @property
     def is_on(self) -> bool:
         return bool((self.coordinator.data or {}).get("sensors_unavailable", False))
+
+
+class DisturbanceActiveBinarySensor(CoordinatorEntity, BinarySensorEntity):
+    """
+    Binary sensor that turns ON while a disturbance hold is active.
+
+    ON  = disturbance hold in progress (devices neutral, control suppressed)
+    OFF = normal operation
+    """
+
+    _attr_has_entity_name = True
+    _attr_icon            = "mdi:alert-circle-outline"
+
+    def __init__(self, entry: ConfigEntry, coordinator) -> None:
+        super().__init__(coordinator)
+        self._entry = entry
+        self._attr_unique_id   = f"{entry.entry_id}_disturbance_active_binary"
+        self._attr_name        = "Disturbance Active"
+        self._attr_device_info = device_info_for_entry(entry)
+
+    @property
+    def is_on(self) -> bool:
+        return bool((self.coordinator.data or {}).get("disturbance_active", False))

@@ -488,11 +488,26 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         Solves: theta = (X^T X)^-1 X^T y
         Returns (theta, r2).
+
+        Returns ([0.0]*k, 0.0) for degenerate inputs: too few samples, or any
+        predictor column with zero variance (e.g. exhaust always on or always off),
+        which makes XtX singular regardless of the pivot threshold.
         """
         n = len(y)
         k = len(X_rows[0])
         if n < k + 1:
             return [0.0] * k, 0.0
+
+        # Reject zero-variance columns before attempting the solve — a column with
+        # no variation (e.g. exhaust was never toggled) makes XtX exactly singular
+        # and the Gaussian elimination pivot check alone is not reliable enough to
+        # catch it cleanly with floating-point arithmetic.
+        for col in range(k):
+            col_vals = [X_rows[r][col] for r in range(n)]
+            col_mean = sum(col_vals) / n
+            col_var  = sum((v - col_mean) ** 2 for v in col_vals) / n
+            if col_var < 1e-10:
+                return [0.0] * k, 0.0
 
         # X^T X  (k x k)
         XtX = [[sum(X_rows[r][i] * X_rows[r][j] for r in range(n))
@@ -659,6 +674,19 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             y_t.append(d_temp)
             X_r.append([ei, rh_amb - rhs[i], 1.0])
             y_r.append(d_rh)
+
+        # Guard against zero-variance columns — if heater or exhaust was never
+        # toggled during the history window, the corresponding column is constant
+        # (all 0.0 or all 1.0) and is perfectly collinear with the bias term.
+        # OLS will return zero for that parameter anyway, but we surface a clear
+        # error message rather than writing zeros to the number entities silently.
+        if len(X_t) > 0:
+            heater_vals  = [row[0] for row in X_t]
+            exhaust_vals = [row[1] for row in X_t]
+            if len(set(heater_vals)) < 2:
+                return {"error": "heater was never toggled in the history window — identification requires both ON and OFF states"}
+            if len(set(exhaust_vals)) < 2:
+                return {"error": "exhaust was never toggled in the history window — identification requires both ON and OFF states"}
 
         theta_t, r2_t = GrowTentCoordinator._ols_fit(X_t, y_t)
         theta_r, r2_r = GrowTentCoordinator._ols_fit(X_r, y_r)
@@ -1337,9 +1365,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         is at or below dew + margin, the heater is turned on to prevent
         condensation regardless of what VPD chase decided.
 
-        When heater mode is "Night Off", the heater eid is suppressed during
-        the VPD chase pass so it plays no part in chasing VPD. It is restored
-        before the dew floor check so condensation protection is always active.
+        When the night strategy is "VPD Chase (No Heater)" (NIGHT_MODE_VPD_NO_HEATER),
+        the heater eid is suppressed during the VPD chase pass so it plays no part
+        in chasing VPD. It is restored before the dew floor check so condensation
+        protection is always active regardless of the night mode setting.
 
         The stage night exhaust profile (on / auto) is also still applied so
         that exhaust behaviour at night is consistent with the dew-protection
@@ -1364,7 +1393,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         await self._apply_vpd_chase(ctx)
 
         # Restore heater eid before dew floor check so condensation protection
-        # is always active regardless of Night Off setting.
+        # is always active regardless of VPD Chase (No Heater) night mode.
         if night_heater_suppressed:
             ctx.heater_eid = saved_heater_eid
 
@@ -1374,7 +1403,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ctx.data["debug_heater_reason"] = (
                 f"night_vpd_chase: dew floor override "
                 f"(avg={ctx.avg_temp:.1f}°C <= floor={dew_floor:.1f}°C)"
-                + (" [Night Off: dew only]" if night_heater_suppressed else "")
+                + (" [VPD Chase (No Heater): dew floor only]" if night_heater_suppressed else "")
             )
             await self._heater_on_if_allowed(
                 ctx, f"night VPD chase: dew floor {dew_floor:.1f}°C"
