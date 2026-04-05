@@ -89,7 +89,7 @@ Key diagnostic sensors for MPC (hidden by default, enable in **Settings → Enti
 - `debug_mpc_plan` — first 3 steps of the chosen action sequence
 - `debug_mpc_score` — cost of the chosen plan (lower = better)
 
-> **Note:** These MPC debug values are written to the coordinator data dict every cycle and are visible in the HA template editor via `state_attr`. They are not registered as standalone sensor entities — use the template editor or a custom template sensor to surface them in a dashboard if needed.
+> **Note:** These MPC debug sensors are registered as diagnostic entities but hidden from the default UI. Enable them individually via **Settings → Devices & Services → Small Grow Tent Controller → Entities** to surface them in a dashboard.
 
 **RLS (Recursive Least Squares) online model adaptation**
 
@@ -130,14 +130,14 @@ Use the **Return All Devices to Auto** button to hand everything back to the con
 **Entities created automatically**
 
 Once set up, the integration creates a full set of entities grouped under a single device in your HA UI:
-- **Sensors:** average temperature, humidity, VPD, dew point, leaf temperature, leaf temp offset, control mode, last action, target VPD (implied), target conflict %, implied RH for target VPD
-- **Binary sensors:** sensors unavailable (problem indicator), plus one "Use X Control" flag for each configured device
-- **Switches:** controller on/off, VPD Chase, exhaust safety override, RLS adaptation, MPC auto-identify weekly
+- **Sensors:** average temperature, humidity, VPD, dew point, leaf temperature, leaf temp offset, control mode, last action, target VPD (implied), target conflict %, implied RH for target VPD, Grow Journal (note count)
+- **Binary sensors:** sensors unavailable (problem indicator), disturbance hold active (status indicator), plus one "Use X Control" flag for each configured device
+- **Switches:** controller on/off, VPD Chase, exhaust safety override, RLS adaptation, MPC auto-identify weekly, trigger disturbance hold (manual)
 - **Number sliders:** all limits, targets, deadbands, hold times, leaf temp offset, MPC model parameters, MPC cost weights, MPC identification days, RLS forgetting factor, weather blend
-- **Select entities:** growth stage, day mode, night mode, and per-device mode selectors (heater, exhaust, humidifier, dehumidifier, circulation)
+- **Select entities:** growth stage, day mode, night mode, and per-device mode selectors (heater, exhaust, humidifier, dehumidifier, circulation, light)
 - **Time helpers:** light on time, light off time
-- **Buttons:** Return All Devices to Auto, Re-identify MPC Model
-- **Diagnostic sensors** (hidden by default, enable via **Settings → Entities**): controller local time, is-day flag, light window, light/exhaust/heater decision reasons, heater target/error/lockout, MPC model R² (temp + RH), MPC last identified timestamp, MPC ambient source
+- **Buttons:** Return All Devices to Auto, Re-identify MPC Model, Clear Last Note, Clear All Notes
+- **Diagnostic sensors** (hidden by default, enable via **Settings → Entities**): controller local time, is-day flag, light window, light/exhaust/heater/humidifier/dehumidifier decision reasons, heater target/error/lockout/runtime, ramped target temp, MPC model R² (temp + RH), MPC last identified timestamp, MPC ambient source, MPC predicted temp/RH/VPD/plan/score, disturbance reason and hold remaining
 
 ---
 
@@ -348,7 +348,7 @@ add_grow_note:
 Make sure you restarted Home Assistant after installation. Check **Settings → System → Logs** for any errors from `small_grow_tent_controller`.
 
 **Controller is stuck on `waiting_for_sensors`**
-One or more of your sensor entities is unavailable or returning a non-numeric value. Check that all four sensor entity IDs in the integration config are correct and reporting valid readings. A persistent notification is also shown on the dashboard when this happens. The **Sensors Unavailable** binary sensor will also be ON.
+One or more of your sensor entities is unavailable or returning a non-numeric value. Check that your primary temperature sensor (sensor 1) and primary humidity sensor (sensor 1) in the integration config are correct and reporting valid readings. If you have optional sensor 2 or 3 configured, verify those too. A persistent notification is also shown on the dashboard when this happens. The **Sensors Unavailable** binary sensor will also be ON.
 
 **Heater turned off unexpectedly**
 If sensors became unavailable while the heater was running, it will have been turned off automatically as a safety measure. Check the `last_action` sensor — if it shows `Heater OFF · sensors unavailable safety shutoff`, that's why. The heater will resume normal control once sensors recover.

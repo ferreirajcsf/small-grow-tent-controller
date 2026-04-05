@@ -34,6 +34,17 @@
   "entity not found". The switch is now named **Trigger Disturbance Hold** and the
   binary sensor **Disturbance Hold Active**.
 
+### Repository / docs
+- **README** — corrected the entity list (missing disturbance switch, disturbance binary
+  sensor, Grow Journal sensor, Clear Last Note and Clear All Notes buttons; light mode
+  selector was absent from the select entities list); fixed an incorrect note that claimed
+  MPC debug sensors were not registered entities (they are diagnostic sensors, hidden by
+  default); corrected "four sensor entity IDs" wording to reflect that only one temp and
+  one humidity sensor are required.
+- **manifest.json** — added missing `homeassistant: "2024.1.0"` minimum version field.
+- **hacs.json** — removed `country` restriction (`["US", "PT"]`); grow tent control is
+  not country-specific.
+
 ## [0.1.72] - 2026-04-04
 
 ### Fixed
