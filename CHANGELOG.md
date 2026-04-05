@@ -1,49 +1,48 @@
+## [0.1.74] - 2026-04-05
+
+### Added
+- **Observability: VPD % In Target Band sensor** — tracks the percentage of 10-second
+  poll cycles where VPD was within the configured deadband of the target. Resets on
+  restart; HA long-term statistics accumulate the trend over days and weeks.
+  `sensor.xxx_vpd_pct_in_target_band`
+- **Observability: VPD Out-of-Band Duration sensor** — shows how many seconds VPD has
+  been continuously outside the deadband in the current streak. Resets to 0 when VPD
+  returns to band. `sensor.xxx_vpd_out_of_band_duration`
+- **Observability: device toggle counters** — four `TOTAL_INCREASING` diagnostic sensors
+  count cumulative on/off transitions for heater, exhaust, humidifier, and dehumidifier
+  since last restart. Because they use `SensorStateClass.TOTAL_INCREASING`, HA natively
+  computes toggles/hour or toggles/day via the statistics graph — no extra configuration
+  needed. Hidden by default; enable via Settings → Entities.
+- **Observability: structured cycle log** — every poll cycle emits one `INFO` log line
+  containing controller state, sensor readings, VPD vs target, device states, control
+  mode, and the primary reason string. Identical consecutive lines are suppressed; a
+  heartbeat is emitted every ~10 minutes if nothing changes. Format:
+  `[Tent] DAY | 24.1°C 62.3% 1.120kPa | target=1.15kPa 87.3%_in_band | heat=OFF exh=ON hum=OFF deh=OFF | vpd_chase vpd_high: temp ok -> reduce_humidity`
+
+### Fixed
+- **Bug 1** — Orphaned section-header comment indentation.
+- **Bug 2** — `mpc_a_bias_day` default mismatch (0.250 → 0.180).
+- **Bug 3** — `GrowTime` missing `async_write_ha_state()` after restore.
+- **Bug 4 / hotfix** — `NameError` on `heater_on_actual` when controller disabled.
+- **Bug 5** — Removed dead-code `_mpc_simulate` and `_mpc_score` methods.
+- **Bug 6** — Per-sensor display values now use filtered readings.
+- **Bug 7** — `get_significant_states` moved to thread executor.
+- **Bug 8** — `rh_above_max` branch inconsistent `>` vs `>=` guard.
+- **Bug 9** — `ControlState` dict fields now use `field(default_factory=dict)`.
+- **Disturbance entity name collision** — switch renamed to **Trigger Disturbance Hold**,
+  binary sensor renamed to **Disturbance Hold Active**.
+
+### Repository / docs
+- **README** — corrected entity list, fixed stale MPC debug sensor note, fixed
+  "four sensor entity IDs" wording.
+- **manifest.json** — added missing `homeassistant: "2024.1.0"` minimum version field.
+- **hacs.json** — removed country restriction.
+
 ## [0.1.73] - 2026-04-05
 
 ### Fixed
-- **Bug 1** — Orphaned section-header comments inside several methods had inconsistent
-  indentation (8-space instead of 4-space), making them appear to belong to the preceding
-  method body. All section banners now sit at class body level (4 spaces).
-- **Bug 2** — `mpc_a_bias_day` default value was `0.250` in the coordinator but `0.180`
-  in the `number.py` slider definition. Both now consistently use `0.180`.
-- **Bug 3** — `GrowTime.async_added_to_hass` did not call `async_write_ha_state()` after
-  restoring a saved value, causing light on/off time entities to show their defaults
-  until the next state change after a HA restart.
-- **Bug 4 / hotfix** — `rls_prev_heater` / `rls_prev_exhaust` caused a `NameError` crash
-  when the controller was disabled, because those variables are only defined in the
-  enabled code path. The RLS observation save block now reads switch state directly,
-  which works regardless of enabled state and preserves the pre-control correctness fix.
-- **Bug 5** — Removed two dead-code methods (`_mpc_simulate`, `_mpc_score`) that were
-  never called; all MPC optimisation runs through `_mpc_optimise`.
-- **Bug 6** — Per-sensor display values (`Sensor 1 Temperature` etc.) were populated from
-  raw sensor readings, bypassing the anomaly filter. They now show filtered values,
-  consistent with `Average Temperature` and all control decisions.
-- **Bug 7** — `get_significant_states` was called synchronously on the HA event loop
-  during MPC model identification, blocking it for up to several seconds on large history
-  windows. Now runs in the recorder's thread executor.
-- **Bug 8** — In `_apply_drying_mode` and `_apply_day_hard_limits`, the `rh_above_max`
-  branch used `>=` for the heater-off guard but `>` for the exhaust-on guard. At exactly
-  `avg_temp == min_temp` this left the tent stuck with high humidity and no corrective
-  action. Both guards now use `>` consistently.
-- **Bug 9** — `ControlState` dict fields `last_good_temp`, `last_good_rh`,
-  `anomaly_streak_temp`, and `anomaly_streak_rh` were typed as `dict` but initialised
-  to `None`. Now use `dataclasses.field(default_factory=dict)`.
-- **Disturbance entity name collision** — `DisturbanceSwitch` and
-  `DisturbanceActiveBinarySensor` both had `_attr_name = "Disturbance Active"`, causing
-  HA to generate duplicate entity_id slugs and leaving dashboard cards broken with
-  "entity not found". The switch is now named **Trigger Disturbance Hold** and the
-  binary sensor **Disturbance Hold Active**.
-
-### Repository / docs
-- **README** — corrected the entity list (missing disturbance switch, disturbance binary
-  sensor, Grow Journal sensor, Clear Last Note and Clear All Notes buttons; light mode
-  selector was absent from the select entities list); fixed an incorrect note that claimed
-  MPC debug sensors were not registered entities (they are diagnostic sensors, hidden by
-  default); corrected "four sensor entity IDs" wording to reflect that only one temp and
-  one humidity sensor are required.
-- **manifest.json** — added missing `homeassistant: "2024.1.0"` minimum version field.
-- **hacs.json** — removed `country` restriction (`["US", "PT"]`); grow tent control is
-  not country-specific.
+- Bug fixes and repository tidy-up. See v0.1.74 changelog for full details — these
+  fixes were originally tagged as 0.1.73 before observability features were added.
 
 ## [0.1.72] - 2026-04-04
 

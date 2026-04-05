@@ -1,7 +1,7 @@
 {
   "domain": "small_grow_tent_controller",
   "name": "Small Grow Tent Controller",
-  "version": "0.1.73",
+  "version": "0.1.74",
   "homeassistant": "2024.1.0",
   "codeowners": [
     "@ferreirajcsf"

@@ -64,10 +64,23 @@ SENSORS = [
     # Disturbance detection — disturbance_active is a BinarySensor (see binary_sensor.py)
     ("debug_disturbance_reason",       "Disturbance Reason",          None, None, True),
     ("debug_disturbance_remaining_s",  "Disturbance Hold Remaining",  None, "s",  True),
+
+    # ── Observability ────────────────────────────────────────────────────────
+    # VPD deadband performance — primary user-facing metric
+    ("vpd_pct_in_band",     "VPD % In Target Band",     None, "%",  False),
+    ("vpd_out_of_band_s",   "VPD Out-of-Band Duration", None, "s",  False),
+    # Device toggle counters — TOTAL_INCREASING so HA natively computes rate/hour
+    ("heater_toggles",       "Heater Toggles",       None, None, True),
+    ("exhaust_toggles",      "Exhaust Toggles",      None, None, True),
+    ("humidifier_toggles",   "Humidifier Toggles",   None, None, True),
+    ("dehumidifier_toggles", "Dehumidifier Toggles", None, None, True),
 ]
 
 # Numeric sensors that should be recorded in long-term statistics
-_MEASUREMENT_KEYS = {"avg_temp_c", "avg_rh", "vpd_kpa", "dew_point_c"}
+_MEASUREMENT_KEYS  = {"avg_temp_c", "avg_rh", "vpd_kpa", "dew_point_c",
+                       "vpd_pct_in_band", "vpd_out_of_band_s"}
+_TOTAL_INCR_KEYS   = {"heater_toggles", "exhaust_toggles",
+                       "humidifier_toggles", "dehumidifier_toggles"}
 
 
 async def async_setup_entry(
@@ -103,6 +116,8 @@ class GrowTentSensor(CoordinatorEntity, SensorEntity):
 
         if key in _MEASUREMENT_KEYS:
             self._attr_state_class = SensorStateClass.MEASUREMENT
+        elif key in _TOTAL_INCR_KEYS:
+            self._attr_state_class = SensorStateClass.TOTAL_INCREASING
 
         # Debug sensors hidden from the default UI by default
         if is_debug:

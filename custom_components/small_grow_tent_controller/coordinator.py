@@ -162,6 +162,23 @@ class ControlState:
     # Last action recorded by the controller
     last_action: str = "none"
 
+    # ── Observability ────────────────────────────────────────────────────────
+    # VPD deadband performance tracking — counts 10-second polls
+    vpd_in_band_polls:  int = 0   # polls where VPD was within deadband
+    vpd_total_polls:    int = 0   # total polls with valid sensor readings
+    # Current out-of-band streak — None when VPD is in band
+    vpd_out_of_band_since: datetime | None = None
+
+    # Cumulative device toggle counters (TOTAL_INCREASING — never reset)
+    heater_toggles:       int = 0
+    exhaust_toggles:      int = 0
+    humidifier_toggles:   int = 0
+    dehumidifier_toggles: int = 0
+
+    # Structured cycle log — suppress identical consecutive lines
+    _last_cycle_log: str = ""
+    _cycle_log_suppressed: int = 0   # consecutive identical lines suppressed
+
 
 # ---------------------------------------------------------------------------
 # Runtime context — passed between the focused sub-methods each cycle
@@ -1809,6 +1826,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.heater_eid, False)
             self.control.last_heater_change = ctx.now
             self._record_action(f"Heater OFF · {reason}")
+            self.control.heater_toggles += 1
             ctx.heater_on = False
 
     async def _heater_on_if_allowed(self, ctx: _Ctx, reason: str) -> None:
@@ -1821,6 +1839,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.heater_eid, True)
             self.control.last_heater_change = ctx.now
             self._record_action(f"Heater ON · {reason}")
+            self.control.heater_toggles += 1
             ctx.heater_on = True
 
     async def _exhaust_on_if_off(self, ctx: _Ctx, reason: str) -> None:
@@ -1829,6 +1848,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.exhaust_eid, True)
             self.control.last_exhaust_change = ctx.now
             self._record_action(f"Exhaust ON · {reason}")
+            self.control.exhaust_toggles += 1
             ctx.exhaust_on = True
 
     async def _exhaust_off_if_on(self, ctx: _Ctx, reason: str) -> None:
@@ -1840,6 +1860,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.exhaust_eid, False)
             self.control.last_exhaust_change = ctx.now
             self._record_action(f"Exhaust OFF · {reason}")
+            self.control.exhaust_toggles += 1
             ctx.exhaust_on = False
 
     async def _humidifier_on(self, ctx: _Ctx, reason: str = "auto") -> None:
@@ -1847,6 +1868,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.humidifier_eid, True)
             self.control.last_humidifier_change = ctx.now
             self._record_action(f"Humidifier ON · {reason}")
+            self.control.humidifier_toggles += 1
             ctx.humidifier_on = True
 
     async def _humidifier_off(self, ctx: _Ctx, reason: str = "auto") -> None:
@@ -1854,6 +1876,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.humidifier_eid, False)
             self.control.last_humidifier_change = ctx.now
             self._record_action(f"Humidifier OFF · {reason}")
+            self.control.humidifier_toggles += 1
             ctx.humidifier_on = False
 
     async def _dehumidifier_on(self, ctx: _Ctx, reason: str = "auto") -> None:
@@ -1861,6 +1884,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.dehumidifier_eid, True)
             self.control.last_dehumidifier_change = ctx.now
             self._record_action(f"Dehumidifier ON · {reason}")
+            self.control.dehumidifier_toggles += 1
             ctx.dehumidifier_on = True
 
     async def _dehumidifier_off(self, ctx: _Ctx, reason: str = "auto") -> None:
@@ -1868,6 +1892,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.dehumidifier_eid, False)
             self.control.last_dehumidifier_change = ctx.now
             self._record_action(f"Dehumidifier OFF · {reason}")
+            self.control.dehumidifier_toggles += 1
             ctx.dehumidifier_on = False
 
     async def _reduce_humidity(self, ctx: _Ctx, reason: str = "auto") -> None:
@@ -2313,6 +2338,132 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 _LOGGER.warning("Stage target reset failed for %s: %s", eid, err)
 
     # ------------------------------------------------------------------ #
+    #  Observability                                                       #
+    # ------------------------------------------------------------------ #
+
+    def _update_observability(self, data: dict[str, Any]) -> None:
+        """Update VPD performance counters, toggle sensor data, and emit the
+        structured cycle log line.  Called once per poll, after control runs."""
+        ctrl  = self.control
+        now   = self._now()
+
+        vpd           = data.get("vpd_kpa")
+        vpd_target    = data.get("vpd_target_kpa") or data.get("night_vpd_target_kpa", 1.0)
+        deadband      = float(data.get("vpd_deadband_kpa", 0.07))
+        sensors_ok    = vpd is not None and data.get("avg_temp_c") is not None
+        control_mode  = data.get("control_mode", "init")
+
+        # ── VPD deadband performance ──────────────────────────────────────
+        if sensors_ok and control_mode not in ("init", "disabled", "waiting_for_sensors"):
+            ctrl.vpd_total_polls += 1
+            vpd_low  = vpd_target - deadband
+            vpd_high = vpd_target + deadband
+            in_band  = vpd_low <= float(vpd) <= vpd_high
+
+            if in_band:
+                ctrl.vpd_in_band_polls += 1
+                ctrl.vpd_out_of_band_since = None   # reset streak
+            else:
+                if ctrl.vpd_out_of_band_since is None:
+                    ctrl.vpd_out_of_band_since = now
+
+        # Derived metrics for sensor exposure
+        pct_in_band = (
+            round(ctrl.vpd_in_band_polls / ctrl.vpd_total_polls * 100.0, 1)
+            if ctrl.vpd_total_polls > 0 else None
+        )
+        out_of_band_s = (
+            int((now - ctrl.vpd_out_of_band_since).total_seconds())
+            if ctrl.vpd_out_of_band_since is not None else 0
+        )
+
+        data["vpd_pct_in_band"]        = pct_in_band
+        data["vpd_out_of_band_s"]      = out_of_band_s
+        data["vpd_polls_total"]        = ctrl.vpd_total_polls
+        data["heater_toggles"]         = ctrl.heater_toggles
+        data["exhaust_toggles"]        = ctrl.exhaust_toggles
+        data["humidifier_toggles"]     = ctrl.humidifier_toggles
+        data["dehumidifier_toggles"]   = ctrl.dehumidifier_toggles
+
+        # ── Structured cycle log ──────────────────────────────────────────
+        # Determine controller state label
+        if control_mode == "disabled":
+            state_label = "DISABLED"
+        elif control_mode == "waiting_for_sensors":
+            state_label = "SENSORS_UNAVAIL"
+        elif control_mode.startswith("disturbance_hold"):
+            state_label = "DISTURBANCE"
+        elif control_mode.startswith("safety_trip"):
+            state_label = "SAFETY"
+        elif control_mode in ("init",):
+            state_label = "INIT"
+        elif not data.get("controller_enabled", True):
+            state_label = "DISABLED"
+        else:
+            state_label = "DAY" if data.get("debug_is_day") else "NIGHT"
+
+        # Build compact device state string — only include configured devices
+        dev_parts = []
+        _h_eid   = self._get_option(CONF_HEATER_SWITCH)
+        _e_eid   = self._get_option(CONF_EXHAUST_SWITCH)
+        _hum_eid = self._get_option(CONF_HUMIDIFIER_SWITCH)
+        _deh_eid = self._get_option(CONF_DEHUMIDIFIER_SWITCH)
+        if _h_eid:
+            dev_parts.append(f"heat={'ON ' if self._switch_is_on(_h_eid) else 'OFF'}")
+        if _e_eid:
+            dev_parts.append(f"exh={'ON ' if self._switch_is_on(_e_eid) else 'OFF'}")
+        if _hum_eid:
+            dev_parts.append(f"hum={'ON ' if self._switch_is_on(_hum_eid) else 'OFF'}")
+        if _deh_eid:
+            dev_parts.append(f"deh={'ON ' if self._switch_is_on(_deh_eid) else 'OFF'}")
+        devices_str = " ".join(dev_parts) if dev_parts else "no_devices"
+
+        # Sensor summary
+        avg_t = data.get("avg_temp_c")
+        avg_r = data.get("avg_rh")
+        vpd_v = data.get("vpd_kpa")
+        sensor_str = (
+            f"{avg_t:.1f}°C {avg_r:.1f}% {vpd_v:.3f}kPa"
+            if avg_t is not None and avg_r is not None and vpd_v is not None
+            else "sensors_unavail"
+        )
+
+        # Primary reason — prefer heater reason when in dew/night mode, exhaust otherwise
+        reason = (
+            data.get("debug_heater_reason")
+            or data.get("debug_exhaust_reason")
+            or control_mode
+        )
+        # Trim reason to keep line compact
+        if reason and len(reason) > 40:
+            reason = reason[:40]
+
+        in_band_str = (
+            f"{pct_in_band:.1f}%_in_band" if pct_in_band is not None else "tracking"
+        )
+
+        line = (
+            f"[{self.entry.title}] {state_label} | "
+            f"{sensor_str} | "
+            f"target={vpd_target:.2f}kPa {in_band_str} | "
+            f"{devices_str} | "
+            f"{control_mode} {reason}"
+        )
+
+        # Emit: always on state change, otherwise suppress identical lines but
+        # emit a heartbeat every 60 cycles (~10 min) so the log never goes silent.
+        _MAX_SUPPRESS = 60
+        if line == ctrl._last_cycle_log:
+            ctrl._cycle_log_suppressed += 1
+            if ctrl._cycle_log_suppressed >= _MAX_SUPPRESS:
+                _LOGGER.info("%s (heartbeat, %ds quiet)", line, ctrl._cycle_log_suppressed * 10)
+                ctrl._cycle_log_suppressed = 0
+        else:
+            _LOGGER.info("%s", line)
+            ctrl._last_cycle_log      = line
+            ctrl._cycle_log_suppressed = 0
+
+    # ------------------------------------------------------------------ #
     #  Main data update                                                    #
     # ------------------------------------------------------------------ #
 
@@ -2466,6 +2617,14 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "disturbance_active":              False,
             "debug_disturbance_reason":        "none",
             "debug_disturbance_remaining_s":   0,
+            # Observability (populated later by _update_observability)
+            "vpd_pct_in_band":        None,
+            "vpd_out_of_band_s":      0,
+            "vpd_polls_total":        self.control.vpd_total_polls,
+            "heater_toggles":         self.control.heater_toggles,
+            "exhaust_toggles":        self.control.exhaust_toggles,
+            "humidifier_toggles":     self.control.humidifier_toggles,
+            "dehumidifier_toggles":   self.control.dehumidifier_toggles,
             # MPC identification results (updated by button/auto)
             "mpc_r2_temp":          self.control.mpc_r2_temp,
             "mpc_r2_rh":            self.control.mpc_r2_rh,
@@ -2612,5 +2771,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         elif current_stage != self.control.last_stage:
             self.control.last_stage = current_stage
             await self._reset_stage_targets(current_stage)
+
+        # ------------------------------------------------------------------ #
+        #  Observability                                                        #
+        # ------------------------------------------------------------------ #
+        self._update_observability(data)
 
         return data
