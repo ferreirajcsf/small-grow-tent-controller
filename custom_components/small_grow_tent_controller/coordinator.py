@@ -2577,12 +2577,17 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             else:
                 await self._apply_rls_update(data)
         # Always update prev observations regardless of RLS enabled state
-        # so that when RLS is turned on it has valid prev values immediately
+        # so that when RLS is turned on it has valid prev values immediately.
+        # Read switch state directly here — heater_on_actual / exhaust_on are only
+        # defined when the controller is enabled (they are set after the early-return
+        # disabled branch), so we cannot reference them unconditionally.
         if data.get("avg_temp_c") is not None and data.get("avg_rh") is not None:
+            _h_eid = self._get_option(CONF_HEATER_SWITCH)
+            _e_eid = self._get_option(CONF_EXHAUST_SWITCH)
             self.control.rls_prev_temp    = float(data["avg_temp_c"])
             self.control.rls_prev_rh      = float(data["avg_rh"])
-            self.control.rls_prev_heater  = 1 if heater_on_actual else 0  # pre-control state
-            self.control.rls_prev_exhaust = 1 if exhaust_on else 0         # pre-control state
+            self.control.rls_prev_heater  = 1 if self._switch_is_on(_h_eid) else 0
+            self.control.rls_prev_exhaust = 1 if self._switch_is_on(_e_eid) else 0
             self.control.rls_prev_amb_t   = float(data.get("mpc_temp_amb", 20.0))
             self.control.rls_prev_amb_r   = float(data.get("mpc_rh_amb",   55.0))
 
