@@ -182,5 +182,5 @@ class DisturbanceSwitch(_StoredSwitch):
 
     def __init__(self, hass, entry, store, state_dict):
         super().__init__(hass, entry, store, state_dict, "disturbance_active")
-        self._attr_name = "Disturbance Active"
+        self._attr_name = "Trigger Disturbance Hold"
         self._attr_icon = "mdi:alert-circle-outline"

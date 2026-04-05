@@ -9,30 +9,30 @@
 - **Bug 3** — `GrowTime.async_added_to_hass` did not call `async_write_ha_state()` after
   restoring a saved value, causing light on/off time entities to show their defaults
   until the next state change after a HA restart.
-- **Bug 4** — RLS online adaptation was recording `rls_prev_heater` / `rls_prev_exhaust`
-  from the hardware state *after* `_apply_control()` had already changed the switches.
-  These are now captured from the pre-control hardware state (`heater_on_actual` /
-  `exhaust_on`), so the RLS model correctly attributes temperature changes to the
-  device states that were active during the measurement period.
+- **Bug 4 / hotfix** — `rls_prev_heater` / `rls_prev_exhaust` caused a `NameError` crash
+  when the controller was disabled, because those variables are only defined in the
+  enabled code path. The RLS observation save block now reads switch state directly,
+  which works regardless of enabled state and preserves the pre-control correctness fix.
 - **Bug 5** — Removed two dead-code methods (`_mpc_simulate`, `_mpc_score`) that were
-  never called; all MPC simulation and scoring is handled inside `_mpc_optimise`.
-- **Bug 6** — Per-sensor display values (`temp_sensor_1_c` etc.) were populated from
-  raw sensor readings, bypassing the anomaly filter. They now use filtered values,
-  consistent with `avg_temp_c` and all control logic.
+  never called; all MPC optimisation runs through `_mpc_optimise`.
+- **Bug 6** — Per-sensor display values (`Sensor 1 Temperature` etc.) were populated from
+  raw sensor readings, bypassing the anomaly filter. They now show filtered values,
+  consistent with `Average Temperature` and all control decisions.
 - **Bug 7** — `get_significant_states` was called synchronously on the HA event loop
   during MPC model identification, blocking it for up to several seconds on large history
-  windows. It is now executed in the recorder's thread executor via
-  `async_add_executor_job`.
+  windows. Now runs in the recorder's thread executor.
 - **Bug 8** — In `_apply_drying_mode` and `_apply_day_hard_limits`, the `rh_above_max`
   branch used `>=` for the heater-off guard but `>` for the exhaust-on guard. At exactly
-  `avg_temp == min_temp` this left the tent with no exhaust and no heater — a stuck state.
-  Both conditions now consistently use `>`.
-- **Bug 9** — `ControlState` fields `last_good_temp`, `last_good_rh`,
-  `anomaly_streak_temp`, and `anomaly_streak_rh` were typed as `dict` but defaulted to
-  `None`, requiring defensive None-checks in `_filter_sensor_readings`. They now use
-  `field(default_factory=dict)` and the redundant None-init guards have been removed.
-
-# Changelog
+  `avg_temp == min_temp` this left the tent stuck with high humidity and no corrective
+  action. Both guards now use `>` consistently.
+- **Bug 9** — `ControlState` dict fields `last_good_temp`, `last_good_rh`,
+  `anomaly_streak_temp`, and `anomaly_streak_rh` were typed as `dict` but initialised
+  to `None`. Now use `dataclasses.field(default_factory=dict)`.
+- **Disturbance entity name collision** — `DisturbanceSwitch` and
+  `DisturbanceActiveBinarySensor` both had `_attr_name = "Disturbance Active"`, causing
+  HA to generate duplicate entity_id slugs and leaving dashboard cards broken with
+  "entity not found". The switch is now named **Trigger Disturbance Hold** and the
+  binary sensor **Disturbance Hold Active**.
 
 ## [0.1.72] - 2026-04-04
 
