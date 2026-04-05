@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timedelta, time
 from typing import Any
 
@@ -148,12 +148,12 @@ class ControlState:
 
     # Sensor anomaly filter — last known good value per sensor slot
     # Keyed by sensor index 0/1/2 for temp and rh separately
-    last_good_temp: dict = None   # {0: float, 1: float, 2: float}
-    last_good_rh:   dict = None   # {0: float, 1: float, 2: float}
+    last_good_temp: dict = field(default_factory=dict)  # {0: float, 1: float, 2: float}
+    last_good_rh:   dict = field(default_factory=dict)  # {0: float, 1: float, 2: float}
     # Consecutive anomaly counter per sensor — if too many in a row it's a
     # real failure, not a spike, and we let the normal unavailability logic handle it
-    anomaly_streak_temp: dict = None   # {0: int, 1: int, 2: int}
-    anomaly_streak_rh:   dict = None   # {0: int, 1: int, 2: int}
+    anomaly_streak_temp: dict = field(default_factory=dict)  # {0: int, 1: int, 2: int}
+    anomaly_streak_rh:   dict = field(default_factory=dict)  # {0: int, 1: int, 2: int}
 
     # Previous averaged readings — used for disturbance detection delta
     prev_avg_temp: float | None = None
@@ -364,15 +364,6 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         """
         ctrl = self.control
 
-        # Initialise dicts on first call
-        if ctrl.last_good_temp is None:
-            ctrl.last_good_temp = {}
-        if ctrl.last_good_rh is None:
-            ctrl.last_good_rh = {}
-        if ctrl.anomaly_streak_temp is None:
-            ctrl.anomaly_streak_temp = {}
-        if ctrl.anomaly_streak_rh is None:
-            ctrl.anomaly_streak_rh = {}
 
         def _filter(values, last_good, streaks, max_delta):
             filtered = []
@@ -752,14 +743,19 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         recorder_instance = rec_comp.get_instance(self.hass)
 
-        # get_significant_states must be called from the event loop
+        # get_significant_states is a synchronous DB call — run it in the
+        # recorder's executor so we never block the HA event loop.
         try:
-            states_map = get_significant_states(
+            states_map = await recorder_instance.async_add_executor_job(
+                get_significant_states,
                 self.hass,
                 start,
                 end,
-                entity_ids=all_eids,
-                significant_changes_only=False,
+                all_eids,
+                None,   # filters
+                False,  # include_start_time_state
+                False,  # significant_changes_only
+                False,  # minimal_response
             )
         except Exception as err:
             _LOGGER.error("%s: Failed to fetch recorder history: %s", self.entry.title, err)
@@ -840,7 +836,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         )
         return result
 
-        # ------------------------------------------------------------------ #
+    # ------------------------------------------------------------------ #
     #  RLS (Recursive Least Squares) online model adaptation              #
     # ------------------------------------------------------------------ #
 
@@ -1259,7 +1255,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         elif limit == "rh_above_max":
             if ctx.avg_temp > ctx.min_temp:
                 await self._exhaust_on_if_off(ctx, "drying: rh_above_max -> exhaust_on")
-            if ctx.avg_temp >= ctx.min_temp:
+            if ctx.avg_temp > ctx.min_temp:
                 await self._heater_off(ctx, "drying: rh_above_max -> heater_off")
             await self._humidifier_off(ctx)
             await self._dehumidifier_on(ctx)
@@ -1421,59 +1417,6 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # ------------------------------------------------------------------ #
     #  MPC day control                                                     #
     # ------------------------------------------------------------------ #
-
-    def _mpc_simulate(
-        self,
-        temp0: float, rh0: float,
-        actions: list[tuple[int, int]],   # list of (heater, exhaust) per step
-        ctx: "_Ctx",
-    ) -> tuple[float, float]:
-        """Simulate tent state forward using the identified model."""
-        temp = temp0
-        rh   = rh0
-        ta   = ctx.mpc_temp_amb
-        ra   = ctx.mpc_rh_amb
-        for h, e in actions:
-            temp += (ctx.mpc_a_heater  * h
-                   + ctx.mpc_a_exhaust * e
-                   + ctx.mpc_a_passive * (ta - temp)
-                   + ctx.mpc_a_bias)
-            rh   += (ctx.mpc_b_exhaust * e
-                   + ctx.mpc_b_passive * (ra - rh)
-                   + ctx.mpc_b_bias)
-            # Clamp to physically plausible range
-            temp = max(0.0,   min(60.0, temp))
-            rh   = max(0.1,   min(99.9, rh))
-        return temp, rh
-
-    def _mpc_score(
-        self,
-        temp_final: float, rh_final: float,
-        target_temp: float, target_rh: float, target_vpd: float,
-        actions: list[tuple[int, int]],
-        heater_on_now: bool, exhaust_on_now: bool,
-        ctx: "_Ctx",
-    ) -> float:
-        """Score a candidate action sequence. Lower = better."""
-        # Compute implied VPD at predicted state
-        leaf_temp = temp_final + float(ctx.data.get("leaf_temp_offset_c", -1.5))
-        pred_vpd  = vpd_leaf_kpa(temp_final, rh_final, leaf_temp)
-
-        temp_err = (temp_final  - target_temp) ** 2
-        rh_err   = (rh_final    - target_rh)   ** 2
-        vpd_err  = (pred_vpd    - target_vpd)  ** 2
-
-        # Switching penalty: penalise changing device state on first step
-        first_h, first_e = actions[0]
-        switch_penalty = (
-            (abs(first_h - int(heater_on_now)) + abs(first_e - int(exhaust_on_now)))
-            * ctx.mpc_w_switch
-        )
-
-        return (ctx.mpc_w_vpd  * vpd_err
-              + ctx.mpc_w_temp * temp_err
-              + ctx.mpc_w_rh   * rh_err
-              + switch_penalty)
 
     @staticmethod
     def _mpc_optimise(
@@ -1731,7 +1674,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         elif limit == "rh_above_max":
             if ctx.avg_temp > ctx.min_temp:
                 await self._exhaust_on_if_off(ctx, "hard_limit: rh_above_max -> exhaust_on")
-            if ctx.avg_temp >= ctx.min_temp:
+            if ctx.avg_temp > ctx.min_temp:
                 await self._heater_off(ctx, "hard_limit: rh_above_max -> heater_off")
             await self._humidifier_off(ctx)
             await self._dehumidifier_on(ctx)
@@ -2124,7 +2067,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             mpc_a_exhaust      = float(data.get("mpc_a_exhaust",   -0.082)),
             mpc_a_passive      = float(data.get("mpc_a_passive",    0.008)),
             mpc_a_bias         = float(data.get("mpc_a_bias",       0.057)),
-            mpc_a_bias_day     = float(data.get("mpc_a_bias_day",   0.250)),
+            mpc_a_bias_day     = float(data.get("mpc_a_bias_day",   0.180)),
             mpc_b_exhaust      = float(data.get("mpc_b_exhaust",   -1.196)),
             mpc_b_passive      = float(data.get("mpc_b_passive",    0.006)),
             mpc_b_bias         = float(data.get("mpc_b_bias",       0.556)),
@@ -2425,12 +2368,12 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             return self._entity_id(domain, key)
 
         data: dict[str, Any] = {
-            "temp_sensor_1_c":  self._get_state_float(temp_eids[0]) if len(temp_eids) > 0 else None,
-            "temp_sensor_2_c":  self._get_state_float(temp_eids[1]) if len(temp_eids) > 1 else None,
-            "temp_sensor_3_c":  self._get_state_float(temp_eids[2]) if len(temp_eids) > 2 else None,
-            "rh_sensor_1":      self._get_state_float(rh_eids[0])   if len(rh_eids)   > 0 else None,
-            "rh_sensor_2":      self._get_state_float(rh_eids[1])   if len(rh_eids)   > 1 else None,
-            "rh_sensor_3":      self._get_state_float(rh_eids[2])   if len(rh_eids)   > 2 else None,
+            "temp_sensor_1_c":  filtered_temps[0] if len(filtered_temps) > 0 else None,
+            "temp_sensor_2_c":  filtered_temps[1] if len(filtered_temps) > 1 else None,
+            "temp_sensor_3_c":  filtered_temps[2] if len(filtered_temps) > 2 else None,
+            "rh_sensor_1":      filtered_rhs[0]   if len(filtered_rhs)   > 0 else None,
+            "rh_sensor_2":      filtered_rhs[1]   if len(filtered_rhs)   > 1 else None,
+            "rh_sensor_3":      filtered_rhs[2]   if len(filtered_rhs)   > 2 else None,
             "avg_temp_c":      avg_t,
             "avg_rh":          avg_r,
             "vpd_kpa":         vpd,
@@ -2460,7 +2403,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "mpc_a_exhaust":      self._num(_eid("mpc_a_exhaust"),  -0.082),
             "mpc_a_passive":      self._num(_eid("mpc_a_passive"),   0.008),
             "mpc_a_bias":         self._num(_eid("mpc_a_bias"),      0.057),
-            "mpc_a_bias_day":      self._num(_eid("mpc_a_bias_day"),  0.250),
+            "mpc_a_bias_day":      self._num(_eid("mpc_a_bias_day"),  0.180),
             "mpc_b_exhaust":      self._num(_eid("mpc_b_exhaust"),  -1.196),
             "mpc_b_passive":      self._num(_eid("mpc_b_passive"),   0.006),
             "mpc_b_bias":         self._num(_eid("mpc_b_bias"),      0.556),
@@ -2638,8 +2581,8 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if data.get("avg_temp_c") is not None and data.get("avg_rh") is not None:
             self.control.rls_prev_temp    = float(data["avg_temp_c"])
             self.control.rls_prev_rh      = float(data["avg_rh"])
-            self.control.rls_prev_heater  = 1 if self._switch_is_on(self._get_option(CONF_HEATER_SWITCH)) else 0
-            self.control.rls_prev_exhaust = 1 if self._switch_is_on(self._get_option(CONF_EXHAUST_SWITCH)) else 0
+            self.control.rls_prev_heater  = 1 if heater_on_actual else 0  # pre-control state
+            self.control.rls_prev_exhaust = 1 if exhaust_on else 0         # pre-control state
             self.control.rls_prev_amb_t   = float(data.get("mpc_temp_amb", 20.0))
             self.control.rls_prev_amb_r   = float(data.get("mpc_rh_amb",   55.0))
 

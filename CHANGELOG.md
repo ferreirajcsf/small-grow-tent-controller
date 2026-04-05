@@ -1,3 +1,37 @@
+## [0.1.73] - 2026-04-05
+
+### Fixed
+- **Bug 1** — Orphaned section-header comments inside several methods had inconsistent
+  indentation (8-space instead of 4-space), making them appear to belong to the preceding
+  method body. All section banners now sit at class body level (4 spaces).
+- **Bug 2** — `mpc_a_bias_day` default value was `0.250` in the coordinator but `0.180`
+  in the `number.py` slider definition. Both now consistently use `0.180`.
+- **Bug 3** — `GrowTime.async_added_to_hass` did not call `async_write_ha_state()` after
+  restoring a saved value, causing light on/off time entities to show their defaults
+  until the next state change after a HA restart.
+- **Bug 4** — RLS online adaptation was recording `rls_prev_heater` / `rls_prev_exhaust`
+  from the hardware state *after* `_apply_control()` had already changed the switches.
+  These are now captured from the pre-control hardware state (`heater_on_actual` /
+  `exhaust_on`), so the RLS model correctly attributes temperature changes to the
+  device states that were active during the measurement period.
+- **Bug 5** — Removed two dead-code methods (`_mpc_simulate`, `_mpc_score`) that were
+  never called; all MPC simulation and scoring is handled inside `_mpc_optimise`.
+- **Bug 6** — Per-sensor display values (`temp_sensor_1_c` etc.) were populated from
+  raw sensor readings, bypassing the anomaly filter. They now use filtered values,
+  consistent with `avg_temp_c` and all control logic.
+- **Bug 7** — `get_significant_states` was called synchronously on the HA event loop
+  during MPC model identification, blocking it for up to several seconds on large history
+  windows. It is now executed in the recorder's thread executor via
+  `async_add_executor_job`.
+- **Bug 8** — In `_apply_drying_mode` and `_apply_day_hard_limits`, the `rh_above_max`
+  branch used `>=` for the heater-off guard but `>` for the exhaust-on guard. At exactly
+  `avg_temp == min_temp` this left the tent with no exhaust and no heater — a stuck state.
+  Both conditions now consistently use `>`.
+- **Bug 9** — `ControlState` fields `last_good_temp`, `last_good_rh`,
+  `anomaly_streak_temp`, and `anomaly_streak_rh` were typed as `dict` but defaulted to
+  `None`, requiring defensive None-checks in `_filter_sensor_readings`. They now use
+  `field(default_factory=dict)` and the redundant None-init guards have been removed.
+
 # Changelog
 
 ## [0.1.72] - 2026-04-04

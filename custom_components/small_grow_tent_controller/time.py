@@ -51,6 +51,7 @@ class GrowTime(TimeEntity):
                 self._value = time(int(hh), int(mm), int(ss))
             except Exception:
                 pass
+        self.async_write_ha_state()
 
     @property
     def native_value(self):
