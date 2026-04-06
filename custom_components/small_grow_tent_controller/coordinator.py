@@ -175,6 +175,10 @@ class ControlState:
     humidifier_toggles:   int = 0
     dehumidifier_toggles: int = 0
 
+    # RLS parameter write throttle — only write to number entities every N polls
+    # (writing every 10s floods the event bus with state_changed events)
+    rls_write_countdown: int = 0
+
     # Structured cycle log — suppress identical consecutive lines
     _last_cycle_log: str = ""
     _cycle_log_suppressed: int = 0   # consecutive identical lines suppressed
@@ -1004,27 +1008,34 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ctrl.rls_P_r     = P_r_new
 
         # Write updated parameters back to number entities so they persist
-        # and are visible on the dashboard. Use non-blocking calls.
-        param_updates = {
-            "mpc_a_heater":  round(theta_t_new[0], 6),
-            "mpc_a_exhaust": round(theta_t_new[1], 6),
-            "mpc_a_passive": round(theta_t_new[2], 6),
-            "mpc_a_bias":    round(theta_t_new[3], 6),
-            "mpc_b_exhaust": round(theta_r_new[0], 6),
-            "mpc_b_passive": round(theta_r_new[1], 6),
-            "mpc_b_bias":    round(theta_r_new[2], 6),
-        }
-        for key, val in param_updates.items():
-            num_eid = self._entity_id("number", key)
-            if num_eid:
-                try:
-                    await self.hass.services.async_call(
-                        "number", "set_value",
-                        {"entity_id": num_eid, "value": val},
-                        blocking=False,
-                    )
-                except Exception:
-                    pass
+        # and are visible on the dashboard.  Throttled to once per minute
+        # (~6 polls) — writing every 10 s floods the HA event bus with
+        # state_changed events and can cause websocket queue overflows.
+        # In-cycle control always uses the data dict directly (updated below),
+        # so the throttle has no effect on control accuracy.
+        ctrl.rls_write_countdown -= 1
+        if ctrl.rls_write_countdown <= 0:
+            ctrl.rls_write_countdown = 6  # reset: write again in ~60 s
+            param_updates = {
+                "mpc_a_heater":  round(theta_t_new[0], 6),
+                "mpc_a_exhaust": round(theta_t_new[1], 6),
+                "mpc_a_passive": round(theta_t_new[2], 6),
+                "mpc_a_bias":    round(theta_t_new[3], 6),
+                "mpc_b_exhaust": round(theta_r_new[0], 6),
+                "mpc_b_passive": round(theta_r_new[1], 6),
+                "mpc_b_bias":    round(theta_r_new[2], 6),
+            }
+            for key, val in param_updates.items():
+                num_eid = self._entity_id("number", key)
+                if num_eid:
+                    try:
+                        await self.hass.services.async_call(
+                            "number", "set_value",
+                            {"entity_id": num_eid, "value": val},
+                            blocking=False,
+                        )
+                    except Exception:
+                        pass
 
         # Update data dict so this cycle's MPC uses the freshly adapted params
         data["mpc_a_heater"]  = theta_t_new[0]
@@ -1965,6 +1976,14 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                     await self._async_switch(light_eid, False)
                     self.control.last_light_change = now
                     self._record_action("Light OFF · drying")
+            elif self.control.startup_polls_remaining > 0:
+                # Suppress schedule-based light switching during the startup window.
+                # GrowTime entities restore their saved schedule asynchronously after
+                # the first refresh; if the time entity is still unavailable the
+                # coordinator falls back to the hardcoded defaults (09:00/21:00),
+                # which may not match the user's actual schedule and cause a
+                # spurious light toggle at startup or after a reload.
+                data["debug_light_reason"] = "startup_suppressed -> waiting_for_schedule"
             elif not is_day and cur_light:
                 data["debug_light_reason"] = "schedule_night_window -> turn_off"
                 if self._can_toggle(self.control.last_light_change, 10):
