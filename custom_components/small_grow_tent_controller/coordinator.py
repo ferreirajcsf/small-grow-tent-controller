@@ -2492,7 +2492,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             reason = reason[:40]
 
         in_band_str = (
-            f"{pct_in_band:.1f}%_in_band" if pct_in_band is not None else "tracking"
+            f"{pct_in_band_24h:.1f}%_in_band" if pct_in_band_24h is not None else "tracking"
         )
 
         line = (
