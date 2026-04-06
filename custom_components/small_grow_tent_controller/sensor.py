@@ -69,11 +69,14 @@ SENSORS = [
     # VPD deadband performance — primary user-facing metric
     ("vpd_pct_in_band",     "VPD % In Target Band",     None, "%",  False),
     ("vpd_out_of_band_s",   "VPD Out-of-Band Duration", None, "s",  False),
-    # Device toggle counters — TOTAL_INCREASING so HA natively computes rate/hour
-    ("heater_toggles",       "Heater Toggles",       None, None, True),
-    ("exhaust_toggles",      "Exhaust Toggles",      None, None, True),
-    ("humidifier_toggles",   "Humidifier Toggles",   None, None, True),
-    ("dehumidifier_toggles", "Dehumidifier Toggles", None, None, True),
+    # Device toggle counters — TOTAL_INCREASING so HA natively computes rate/hour.
+    # is_debug=False so they are enabled by default — HA only records statistics
+    # for enabled entities, so disabling them by default would mean the statistics
+    # graph has no data even after the user manually enables them later.
+    ("heater_toggles",       "Heater Toggles",       None, None, False),
+    ("exhaust_toggles",      "Exhaust Toggles",      None, None, False),
+    ("humidifier_toggles",   "Humidifier Toggles",   None, None, False),
+    ("dehumidifier_toggles", "Dehumidifier Toggles", None, None, False),
 ]
 
 # Numeric sensors that should be recorded in long-term statistics
