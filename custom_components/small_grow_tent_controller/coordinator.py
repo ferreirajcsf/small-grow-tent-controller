@@ -1826,7 +1826,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.heater_eid, False)
             self.control.last_heater_change = ctx.now
             self._record_action(f"Heater OFF · {reason}")
-            self.control.heater_toggles += 1
+            self._increment_toggle("heater")
             ctx.heater_on = False
 
     async def _heater_on_if_allowed(self, ctx: _Ctx, reason: str) -> None:
@@ -1839,7 +1839,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.heater_eid, True)
             self.control.last_heater_change = ctx.now
             self._record_action(f"Heater ON · {reason}")
-            self.control.heater_toggles += 1
+            self._increment_toggle("heater")
             ctx.heater_on = True
 
     async def _exhaust_on_if_off(self, ctx: _Ctx, reason: str) -> None:
@@ -1848,7 +1848,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.exhaust_eid, True)
             self.control.last_exhaust_change = ctx.now
             self._record_action(f"Exhaust ON · {reason}")
-            self.control.exhaust_toggles += 1
+            self._increment_toggle("exhaust")
             ctx.exhaust_on = True
 
     async def _exhaust_off_if_on(self, ctx: _Ctx, reason: str) -> None:
@@ -1860,7 +1860,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.exhaust_eid, False)
             self.control.last_exhaust_change = ctx.now
             self._record_action(f"Exhaust OFF · {reason}")
-            self.control.exhaust_toggles += 1
+            self._increment_toggle("exhaust")
             ctx.exhaust_on = False
 
     async def _humidifier_on(self, ctx: _Ctx, reason: str = "auto") -> None:
@@ -1868,7 +1868,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.humidifier_eid, True)
             self.control.last_humidifier_change = ctx.now
             self._record_action(f"Humidifier ON · {reason}")
-            self.control.humidifier_toggles += 1
+            self._increment_toggle("humidifier")
             ctx.humidifier_on = True
 
     async def _humidifier_off(self, ctx: _Ctx, reason: str = "auto") -> None:
@@ -1876,7 +1876,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.humidifier_eid, False)
             self.control.last_humidifier_change = ctx.now
             self._record_action(f"Humidifier OFF · {reason}")
-            self.control.humidifier_toggles += 1
+            self._increment_toggle("humidifier")
             ctx.humidifier_on = False
 
     async def _dehumidifier_on(self, ctx: _Ctx, reason: str = "auto") -> None:
@@ -1884,7 +1884,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.dehumidifier_eid, True)
             self.control.last_dehumidifier_change = ctx.now
             self._record_action(f"Dehumidifier ON · {reason}")
-            self.control.dehumidifier_toggles += 1
+            self._increment_toggle("dehumidifier")
             ctx.dehumidifier_on = True
 
     async def _dehumidifier_off(self, ctx: _Ctx, reason: str = "auto") -> None:
@@ -1892,7 +1892,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             await self._async_switch(ctx.dehumidifier_eid, False)
             self.control.last_dehumidifier_change = ctx.now
             self._record_action(f"Dehumidifier OFF · {reason}")
-            self.control.dehumidifier_toggles += 1
+            self._increment_toggle("dehumidifier")
             ctx.dehumidifier_on = False
 
     async def _reduce_humidity(self, ctx: _Ctx, reason: str = "auto") -> None:
@@ -2340,6 +2340,26 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------ #
     #  Observability                                                       #
     # ------------------------------------------------------------------ #
+
+    def _increment_toggle(self, device: str) -> None:
+        """Increment a device toggle counter in memory and persist asynchronously.
+
+        device — one of 'heater', 'exhaust', 'humidifier', 'dehumidifier'.
+        The ControlState counter is updated immediately so the sensor value
+        reflects the change on this poll cycle.  The store save is fired as
+        a background task so it never blocks the event loop.
+        """
+        if device == 'heater':
+            self.control.heater_toggles += 1
+        elif device == 'exhaust':
+            self.control.exhaust_toggles += 1
+        elif device == 'humidifier':
+            self.control.humidifier_toggles += 1
+        elif device == 'dehumidifier':
+            self.control.dehumidifier_toggles += 1
+        if hasattr(self, '_toggle_store') and self._toggle_store:
+            self._toggle_store.increment(device)
+            self.hass.async_create_task(self._toggle_store.async_save())
 
     def _update_observability(self, data: dict[str, Any]) -> None:
         """Update VPD performance counters, toggle sensor data, and emit the

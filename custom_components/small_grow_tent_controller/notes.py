@@ -227,3 +227,76 @@ async def async_setup_mpc_results_store(
         coordinator.control.mpc_last_identified = store.last_identified
     return store
 
+
+
+# ── Toggle counter persistence ────────────────────────────────────────────────
+
+_TOGGLE_STORE_VERSION = 1
+
+
+class ToggleCounterStore:
+    """Persists cumulative device toggle counters across HA restarts.
+
+    Counters are incremented in-memory every time a device is switched and
+    flushed to .storage asynchronously.  The flush is triggered after every
+    toggle so the data is always fresh, but the write is non-blocking so it
+    never delays the poll cycle.
+    """
+
+    _KEYS = ("heater", "exhaust", "humidifier", "dehumidifier")
+
+    def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
+        self._store = Store(
+            hass, _TOGGLE_STORE_VERSION,
+            f"{DOMAIN}.toggle_counters.{entry_id}"
+        )
+        self.heater:       int = 0
+        self.exhaust:      int = 0
+        self.humidifier:   int = 0
+        self.dehumidifier: int = 0
+
+    async def async_load(self) -> None:
+        data = await self._store.async_load()
+        if data and isinstance(data, dict):
+            self.heater       = int(data.get("heater",       0))
+            self.exhaust      = int(data.get("exhaust",      0))
+            self.humidifier   = int(data.get("humidifier",   0))
+            self.dehumidifier = int(data.get("dehumidifier", 0))
+
+    async def async_save(self) -> None:
+        await self._store.async_save({
+            "heater":       self.heater,
+            "exhaust":      self.exhaust,
+            "humidifier":   self.humidifier,
+            "dehumidifier": self.dehumidifier,
+        })
+
+    def increment(self, device: str) -> None:
+        """Increment one counter in memory.  Caller must schedule async_save."""
+        if device == "heater":
+            self.heater += 1
+        elif device == "exhaust":
+            self.exhaust += 1
+        elif device == "humidifier":
+            self.humidifier += 1
+        elif device == "dehumidifier":
+            self.dehumidifier += 1
+
+
+async def async_setup_toggle_counter_store(
+    hass: HomeAssistant,
+    entry,
+) -> "ToggleCounterStore":
+    """Create, load, and attach the ToggleCounterStore to the coordinator."""
+    from .coordinator import GrowTentCoordinator
+    coordinator: GrowTentCoordinator = hass.data[DOMAIN][entry.entry_id]
+    store = ToggleCounterStore(hass, entry.entry_id)
+    await store.async_load()
+    coordinator._toggle_store = store
+    # Seed ControlState counters from persisted values so sensors show correct
+    # totals immediately on startup — before any new toggles occur.
+    coordinator.control.heater_toggles       = store.heater
+    coordinator.control.exhaust_toggles      = store.exhaust
+    coordinator.control.humidifier_toggles   = store.humidifier
+    coordinator.control.dehumidifier_toggles = store.dehumidifier
+    return store
