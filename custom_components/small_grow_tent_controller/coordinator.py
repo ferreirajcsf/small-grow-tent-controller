@@ -2393,6 +2393,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         control_mode  = data.get("control_mode", "init")
 
         # ── VPD deadband performance ──────────────────────────────────────
+        in_band = False
         if sensors_ok and control_mode not in ("init", "disabled", "waiting_for_sensors"):
             ctrl.vpd_total_polls += 1
             vpd_low  = vpd_target - deadband
@@ -2406,17 +2407,30 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 if ctrl.vpd_out_of_band_since is None:
                     ctrl.vpd_out_of_band_since = now
 
+            # Record into the 24-hour rolling store and fire background save
+            if hasattr(self, "_vpd_band_store") and self._vpd_band_store:
+                self._vpd_band_store.record(in_band)
+                self.hass.async_create_task(self._vpd_band_store.async_save())
+
         # Derived metrics for sensor exposure
-        pct_in_band = (
-            round(ctrl.vpd_in_band_polls / ctrl.vpd_total_polls * 100.0, 1)
-            if ctrl.vpd_total_polls > 0 else None
+        # pct_in_band_24h — from the rolling hourly store (survives restarts)
+        pct_in_band_24h = (
+            self._vpd_band_store.pct_24h
+            if hasattr(self, "_vpd_band_store") and self._vpd_band_store
+            else None
+        )
+        hours_of_data = (
+            self._vpd_band_store.hours_of_data
+            if hasattr(self, "_vpd_band_store") and self._vpd_band_store
+            else 0
         )
         out_of_band_s = (
             int((now - ctrl.vpd_out_of_band_since).total_seconds())
             if ctrl.vpd_out_of_band_since is not None else 0
         )
 
-        data["vpd_pct_in_band"]        = pct_in_band
+        data["vpd_pct_in_band"]        = pct_in_band_24h
+        data["vpd_pct_in_band_hours"]  = hours_of_data
         data["vpd_out_of_band_s"]      = out_of_band_s
         data["vpd_polls_total"]        = ctrl.vpd_total_polls
         data["heater_toggles"]         = ctrl.heater_toggles
@@ -2658,6 +2672,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             "debug_disturbance_remaining_s":   0,
             # Observability (populated later by _update_observability)
             "vpd_pct_in_band":        None,
+            "vpd_pct_in_band_hours":  0,
             "vpd_out_of_band_s":      0,
             "vpd_polls_total":        self.control.vpd_total_polls,
             "heater_toggles":         self.control.heater_toggles,

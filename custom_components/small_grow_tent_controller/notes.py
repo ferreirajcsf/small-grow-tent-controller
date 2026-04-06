@@ -300,3 +300,104 @@ async def async_setup_toggle_counter_store(
     coordinator.control.humidifier_toggles   = store.humidifier
     coordinator.control.dehumidifier_toggles = store.dehumidifier
     return store
+
+
+# ── VPD deadband 24-hour rolling window ───────────────────────────────────────
+
+_VPD_BAND_STORE_VERSION = 1
+
+
+class VpdBandStore:
+    """Persists a 24-bucket (one per hour) rolling window of VPD deadband polls.
+
+    Each bucket stores {"in": N, "total": N} for one clock hour.
+    The 24h percentage is sum(in) / sum(total) across all buckets.
+    Buckets are keyed 0–23 by hour-of-day; the current hour's bucket is
+    cleared at the start of each new hour so old data ages out naturally.
+
+    This is much lighter than storing 8,640 individual poll results, gives
+    exact 24h accuracy to within one hour, and survives HA restarts.
+    """
+
+    def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
+        self._store = Store(
+            hass, _VPD_BAND_STORE_VERSION,
+            f"{DOMAIN}.vpd_band.{entry_id}"
+        )
+        # buckets[h] = {"in": int, "total": int, "hour_ts": int (unix hour stamp)}
+        self.buckets: dict[int, dict] = {}
+        self._current_hour_ts: int = 0   # unix timestamp of the current hour
+
+    async def async_load(self) -> None:
+        data = await self._store.async_load()
+        if data and isinstance(data.get("buckets"), dict):
+            self.buckets = {int(k): v for k, v in data["buckets"].items()}
+        self._current_hour_ts = self._hour_ts_now()
+
+    async def async_save(self) -> None:
+        await self._store.async_save({"buckets": self.buckets})
+
+    @staticmethod
+    def _hour_ts_now() -> int:
+        """Current time truncated to the hour, as a unix timestamp."""
+        import time as _time
+        t = int(_time.time())
+        return t - (t % 3600)
+
+    def record(self, in_band: bool) -> None:
+        """Record one poll result. Caller schedules async_save."""
+        now_hour_ts = self._hour_ts_now()
+
+        # On hour boundary: advance and clear any bucket older than 23 hours
+        if now_hour_ts != self._current_hour_ts:
+            self._current_hour_ts = now_hour_ts
+
+        # Expire buckets older than 24 hours
+        cutoff = now_hour_ts - 23 * 3600
+        self.buckets = {
+            k: v for k, v in self.buckets.items()
+            if v.get("hour_ts", 0) >= cutoff
+        }
+
+        # Current bucket key = hour index 0–23
+        hour_key = (now_hour_ts // 3600) % 24
+        bucket = self.buckets.get(hour_key)
+        if bucket is None or bucket.get("hour_ts", 0) != now_hour_ts:
+            # New hour — start fresh bucket
+            bucket = {"in": 0, "total": 0, "hour_ts": now_hour_ts}
+            self.buckets[hour_key] = bucket
+
+        bucket["total"] += 1
+        if in_band:
+            bucket["in"] += 1
+
+    @property
+    def pct_24h(self) -> float | None:
+        """Percentage of polls in band over the last 24 hours. None if no data."""
+        now_hour_ts = self._hour_ts_now()
+        cutoff = now_hour_ts - 23 * 3600
+        total = sum(v["total"] for v in self.buckets.values() if v.get("hour_ts", 0) >= cutoff)
+        in_b  = sum(v["in"]    for v in self.buckets.values() if v.get("hour_ts", 0) >= cutoff)
+        if total == 0:
+            return None
+        return round(in_b / total * 100.0, 1)
+
+    @property
+    def hours_of_data(self) -> int:
+        """How many distinct hours of data are in the window."""
+        now_hour_ts = self._hour_ts_now()
+        cutoff = now_hour_ts - 23 * 3600
+        return sum(1 for v in self.buckets.values() if v.get("hour_ts", 0) >= cutoff)
+
+
+async def async_setup_vpd_band_store(
+    hass: HomeAssistant,
+    entry,
+) -> "VpdBandStore":
+    """Create, load, and attach the VpdBandStore to the coordinator."""
+    from .coordinator import GrowTentCoordinator
+    coordinator: GrowTentCoordinator = hass.data[DOMAIN][entry.entry_id]
+    store = VpdBandStore(hass, entry.entry_id)
+    await store.async_load()
+    coordinator._vpd_band_store = store
+    return store

@@ -159,6 +159,8 @@ class GrowNumber(NumberEntity):
 
     async def async_set_native_value(self, value: float):
         v = max(self._attr_native_min_value, min(self._attr_native_max_value, float(value)))
+        if v == self._value:
+            return   # no-op: value unchanged — skip event + storage write
         self._value = v
         await self.store.async_save({"value": self._value})
         self.async_write_ha_state()
