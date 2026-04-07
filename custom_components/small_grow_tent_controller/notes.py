@@ -352,11 +352,11 @@ class VpdBandStore:
         if now_hour_ts != self._current_hour_ts:
             self._current_hour_ts = now_hour_ts
 
-        # Expire buckets older than 24 hours
-        cutoff = now_hour_ts - 23 * 3600
+        # Expire buckets strictly older than 24 hours
+        cutoff = now_hour_ts - 24 * 3600
         self.buckets = {
             k: v for k, v in self.buckets.items()
-            if v.get("hour_ts", 0) >= cutoff
+            if v.get("hour_ts", 0) > cutoff
         }
 
         # Current bucket key = hour index 0–23
@@ -375,9 +375,9 @@ class VpdBandStore:
     def pct_24h(self) -> float | None:
         """Percentage of polls in band over the last 24 hours. None if no data."""
         now_hour_ts = self._hour_ts_now()
-        cutoff = now_hour_ts - 23 * 3600
-        total = sum(v["total"] for v in self.buckets.values() if v.get("hour_ts", 0) >= cutoff)
-        in_b  = sum(v["in"]    for v in self.buckets.values() if v.get("hour_ts", 0) >= cutoff)
+        cutoff = now_hour_ts - 24 * 3600
+        total = sum(v["total"] for v in self.buckets.values() if v.get("hour_ts", 0) > cutoff)
+        in_b  = sum(v["in"]    for v in self.buckets.values() if v.get("hour_ts", 0) > cutoff)
         if total == 0:
             return None
         return round(in_b / total * 100.0, 1)
@@ -386,8 +386,8 @@ class VpdBandStore:
     def hours_of_data(self) -> int:
         """How many distinct hours of data are in the window."""
         now_hour_ts = self._hour_ts_now()
-        cutoff = now_hour_ts - 23 * 3600
-        return sum(1 for v in self.buckets.values() if v.get("hour_ts", 0) >= cutoff)
+        cutoff = now_hour_ts - 24 * 3600
+        return sum(1 for v in self.buckets.values() if v.get("hour_ts", 0) > cutoff)
 
 
 async def async_setup_vpd_band_store(

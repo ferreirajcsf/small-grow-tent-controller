@@ -115,11 +115,14 @@ async def _async_update_listener(hass: HomeAssistant, entry: ConfigEntry) -> Non
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = GrowTentCoordinator(hass, entry)
-    await coordinator.async_config_entry_first_refresh()
 
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN][entry.entry_id] = coordinator
 
+    # Set up all persistent stores BEFORE first_refresh so the coordinator's
+    # first poll cycle has access to persisted data (toggle counters, VPD band
+    # history, MPC results). If stores are attached after first_refresh the
+    # first cycle silently skips recording and restores stale sensor values.
     from .notes import (
         async_setup_notes_store,
         async_setup_mpc_results_store,
@@ -130,6 +133,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_setup_mpc_results_store(hass, entry)
     await async_setup_toggle_counter_store(hass, entry)
     await async_setup_vpd_band_store(hass, entry)
+
+    await coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))
     return True

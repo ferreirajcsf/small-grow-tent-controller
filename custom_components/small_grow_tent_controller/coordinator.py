@@ -185,6 +185,26 @@ class ControlState:
 
 
 # ---------------------------------------------------------------------------
+# Control decision — what the controller decided to do this cycle
+# Produced by _decide_* methods, consumed by _apply_decision.
+# None means "no change requested" for that device.
+# ---------------------------------------------------------------------------
+@dataclass
+class ControlDecision:
+    heater:       bool | None = None
+    exhaust:      bool | None = None
+    humidifier:   bool | None = None
+    dehumidifier: bool | None = None
+    circ:         bool | None = None
+    light:        bool | None = None
+    mode:         str = ""
+    heater_reason:       str = ""
+    exhaust_reason:      str = ""
+    humidifier_reason:   str = ""
+    dehumidifier_reason: str = ""
+
+
+# ---------------------------------------------------------------------------
 # Runtime context — passed between the focused sub-methods each cycle
 # ---------------------------------------------------------------------------
 @dataclass
@@ -1267,54 +1287,58 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     #  Drying mode                                                         #
     # ------------------------------------------------------------------ #
 
-    async def _apply_drying_mode(self, ctx: _Ctx) -> None:
+    def _decide_drying_mode(self, ctx: _Ctx) -> ControlDecision:
+        dec = ControlDecision()
         limit = self._eval_hard_limits(ctx)
-        ctx.data["control_mode"] = "drying_hard_limits_only" if limit is None else f"drying_hard_limit:{limit}"
+        dec.mode = "drying_hard_limits_only" if limit is None else f"drying_hard_limit:{limit}"
 
         if limit is None:
-            await self._heater_off(ctx, "drying: in-band -> neutral")
-            await self._exhaust_off_if_on(ctx, "drying: in-band -> neutral")
+            self._decide_heater_off(ctx, dec, "drying: in-band -> neutral")
+            self._decide_exhaust_off(ctx, dec, "drying: in-band -> neutral")
         elif limit == "temp_below_min":
-            await self._heater_on_if_allowed(ctx, "drying: temp_below_min -> heater_on")
-            await self._exhaust_off_if_on(ctx, "drying: temp_below_min -> exhaust_off")
+            self._decide_heater_on(ctx, dec, "drying: temp_below_min -> heater_on")
+            self._decide_exhaust_off(ctx, dec, "drying: temp_below_min -> exhaust_off")
         elif limit == "temp_above_max":
-            await self._heater_off(ctx, "drying: temp_above_max -> heater_off")
-            await self._exhaust_on_if_off(ctx, "drying: temp_above_max -> exhaust_on")
+            self._decide_heater_off(ctx, dec, "drying: temp_above_max -> heater_off")
+            self._decide_exhaust_on(ctx, dec, "drying: temp_above_max -> exhaust_on")
         elif limit == "rh_above_max":
             if ctx.avg_temp > ctx.min_temp:
-                await self._exhaust_on_if_off(ctx, "drying: rh_above_max -> exhaust_on")
+                self._decide_exhaust_on(ctx, dec, "drying: rh_above_max -> exhaust_on")
             if ctx.avg_temp > ctx.min_temp:
-                await self._heater_off(ctx, "drying: rh_above_max -> heater_off")
-            await self._humidifier_off(ctx)
-            await self._dehumidifier_on(ctx)
+                self._decide_heater_off(ctx, dec, "drying: rh_above_max -> heater_off")
+            self._decide_humidifier_off(ctx, dec)
+            self._decide_dehumidifier_on(ctx, dec)
         elif limit == "rh_below_min":
-            await self._exhaust_off_if_on(ctx, "drying: rh_below_min -> exhaust_off")
+            self._decide_exhaust_off(ctx, dec, "drying: rh_below_min -> exhaust_off")
             if ctx.avg_temp > ctx.min_temp:
-                await self._heater_off(ctx, "drying: rh_below_min -> heater_off")
-            await self._dehumidifier_off(ctx)
-            await self._humidifier_on(ctx)
+                self._decide_heater_off(ctx, dec, "drying: rh_below_min -> heater_off")
+            self._decide_dehumidifier_off(ctx, dec)
+            self._decide_humidifier_on(ctx, dec)
+        return dec
 
     # ------------------------------------------------------------------ #
     #  Night mode                                                          #
     # ------------------------------------------------------------------ #
 
-    async def _apply_night_mode(self, ctx: _Ctx) -> None:
+    async def _decide_night_mode(self, ctx: _Ctx) -> ControlDecision:
         profile      = STAGE_NIGHT_PROFILE.get(ctx.stage, {"exhaust_mode": "on", "dew_margin_add_c": 0.0})
         exhaust_mode = profile.get("exhaust_mode", "on")
         dew_margin_night = ctx.dew_margin + float(profile.get("dew_margin_add_c", 0.0))
 
-        ctx.data["control_mode"] = f"night_{exhaust_mode}_dewpoint_protect"
+        dec = ControlDecision(mode=f"night_{exhaust_mode}_dewpoint_protect")
 
         # Humidifier always off at night; dehumidifier if RH too high
-        await self._humidifier_off(ctx, reason="night: force_off")
+        self._decide_humidifier_off(ctx, dec, "night: force_off")
         if ctx.avg_rh > ctx.max_rh:
-            await self._dehumidifier_on(ctx)
-            ctx.data["debug_dehumidifier_reason"] = "night: rh_above_max -> on"
+            self._decide_dehumidifier_on(ctx, dec)
+            dec.dehumidifier_reason = "night: rh_above_max -> on"
+            ctx.data["debug_dehumidifier_reason"] = dec.dehumidifier_reason
         elif ctx.dehumidifier_on:
-            await self._dehumidifier_off(ctx)
-            ctx.data["debug_dehumidifier_reason"] = "night: rh_ok -> off"
+            self._decide_dehumidifier_off(ctx, dec)
+            dec.dehumidifier_reason = "night: rh_ok -> off"
+            ctx.data["debug_dehumidifier_reason"] = dec.dehumidifier_reason
 
-        # Heater pulse plan
+        # Heater pulse plan — stateful, uses existing async helper
         target_temp = min(ctx.dew + dew_margin_night, ctx.max_temp)
         error       = target_temp - ctx.avg_temp
         on_s, off_s = self._heater_pulse_plan(error)
@@ -1326,15 +1350,15 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         # Exhaust night profile
         if exhaust_mode == "on":
-            ctx.data["debug_exhaust_reason"] = "night: profile=on"
-            await self._exhaust_on_if_off(ctx, "night: profile=on")
+            self._decide_exhaust_on(ctx, dec, "night: profile=on")
         elif exhaust_mode == "auto":
             want = ctx.avg_rh > ctx.max_rh or ctx.avg_temp > ctx.max_temp
-            ctx.data["debug_exhaust_reason"] = f"night: auto want_exhaust={want}"
+            reason = f"night: auto want_exhaust={want}"
             if want:
-                await self._exhaust_on_if_off(ctx, "night: auto on")
+                self._decide_exhaust_on(ctx, dec, reason)
             else:
-                await self._exhaust_off_if_on(ctx, "night: auto off")
+                self._decide_exhaust_off(ctx, dec, reason)
+        return dec
 
     async def _apply_heater_pulse(self, ctx: _Ctx, on_s: int, off_s: int) -> None:
         now = ctx.now
@@ -1381,66 +1405,41 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     #  Night VPD Chase mode                                                #
     # ------------------------------------------------------------------ #
 
-    async def _apply_night_vpd_chase(self, ctx: _Ctx) -> None:
-        """VPD chase at night with a dew-point floor.
-
-        Runs the standard day VPD chase logic, then enforces a hard dew-point
-        floor: if the chase would leave the heater off but the tent temperature
-        is at or below dew + margin, the heater is turned on to prevent
-        condensation regardless of what VPD chase decided.
-
-        When the night strategy is "VPD Chase (No Heater)" (NIGHT_MODE_VPD_NO_HEATER),
-        the heater eid is suppressed during the VPD chase pass so it plays no part
-        in chasing VPD. It is restored before the dew floor check so condensation
-        protection is always active regardless of the night mode setting.
-
-        The stage night exhaust profile (on / auto) is also still applied so
-        that exhaust behaviour at night is consistent with the dew-protection
-        mode and the user's per-stage configuration.
-        """
+    async def _decide_night_vpd_chase(self, ctx: _Ctx) -> ControlDecision:
+        """VPD chase at night with a dew-point floor."""
         profile      = STAGE_NIGHT_PROFILE.get(ctx.stage, {"exhaust_mode": "on", "dew_margin_add_c": 0.0})
         exhaust_mode = profile.get("exhaust_mode", "on")
         dew_margin_night = ctx.dew_margin + float(profile.get("dew_margin_add_c", 0.0))
         dew_floor = ctx.dew + dew_margin_night
 
-        ctx.data["control_mode"] = "night_vpd_chase"
-
-        # "VPD Chase (No Heater)" night mode: suppress heater from VPD chase
-        # but keep the eid aside so the dew floor check can still use it.
+        # Suppress heater from VPD chase if No Heater mode, but keep eid for dew floor
         night_heater_suppressed = (ctx.night_mode == NIGHT_MODE_VPD_NO_HEATER)
         saved_heater_eid = ctx.heater_eid
         if night_heater_suppressed:
             ctx.heater_eid = None
-            ctx.data["debug_heater_reason"] = "night_vpd_chase: VPD Chase (No Heater) — heater suppressed for VPD chase"
 
-        # Run standard VPD chase (handles heater, exhaust, humidifier, dehumidifier)
-        await self._apply_vpd_chase(ctx)
+        dec = self._decide_vpd_chase(ctx)
+        dec.mode = "night_vpd_chase"
 
-        # Restore heater eid before dew floor check so condensation protection
-        # is always active regardless of VPD Chase (No Heater) night mode.
+        # Restore heater eid before dew floor check
         if night_heater_suppressed:
             ctx.heater_eid = saved_heater_eid
 
-        # Dew-point floor: override heater if VPD chase left it off but we are
-        # too close to (or below) the dew point.
+        # Dew-point floor: override heater if VPD chase left it off
         if not ctx.heater_on and ctx.avg_temp <= dew_floor:
-            ctx.data["debug_heater_reason"] = (
+            floor_reason = (
                 f"night_vpd_chase: dew floor override "
                 f"(avg={ctx.avg_temp:.1f}°C <= floor={dew_floor:.1f}°C)"
                 + (" [VPD Chase (No Heater): dew floor only]" if night_heater_suppressed else "")
             )
-            await self._heater_on_if_allowed(
-                ctx, f"night VPD chase: dew floor {dew_floor:.1f}°C"
-            )
+            self._decide_heater_on(ctx, dec, floor_reason)
 
-        # Stage exhaust profile: only force-on is applied on top of VPD chase.
-        # The auto profile is intentionally NOT applied — VPD chase already
-        # made the exhaust decision; the auto override causes cycling.
+        # Stage exhaust profile: force-on only (auto not applied — causes cycling)
         if exhaust_mode == "on":
-            ctx.data["debug_exhaust_reason"] = (
-                ctx.data.get("debug_exhaust_reason", "") + " [night profile: force_on]"
-            )
-            await self._exhaust_on_if_off(ctx, "night VPD chase: profile=on")
+            suffix = " [night profile: force_on]"
+            self._decide_exhaust_on(ctx, dec, (dec.exhaust_reason or "") + suffix)
+
+        return dec
 
         # ------------------------------------------------------------------ #
     #  MPC day control                                                     #
@@ -1511,7 +1510,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         h_want, e_want = best_actions[0]
         return h_want, e_want, best_score, best_actions, tf, rf, pv
 
-    async def _apply_mpc_day(self, ctx: "_Ctx") -> None:
+    async def _decide_mpc_day(self, ctx: "_Ctx") -> ControlDecision:
         """MPC day control.
 
         Evaluates all combinations of heater/exhaust states over a planning
@@ -1563,36 +1562,37 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ctx.data["debug_mpc_pred_vpd"]   = round(vpd_pred, 3)
         ctx.data["debug_mpc_plan"]       = str(best_actions[:3])  # first 3 steps for debug
 
-        # Heater: apply if hold time allows and safety permits
+        dec = ControlDecision(mode="mpc")
+
         if h_want == 1:
-            await self._heater_on_if_allowed(ctx, f"mpc: plan={best_actions[:2]} score={best_score:.3f}")
+            self._decide_heater_on(ctx, dec, f"mpc: plan={best_actions[:2]} score={best_score:.3f}")
         else:
-            await self._heater_off(ctx, f"mpc: plan={best_actions[:2]} score={best_score:.3f}")
+            self._decide_heater_off(ctx, dec, f"mpc: plan={best_actions[:2]} score={best_score:.3f}")
 
-        # Exhaust: apply if hold time allows
         if e_want == 1:
-            await self._exhaust_on_if_off(ctx, f"mpc: plan={best_actions[:2]}")
+            self._decide_exhaust_on(ctx, dec, f"mpc: plan={best_actions[:2]}")
         else:
-            await self._exhaust_off_if_on(ctx, f"mpc: plan={best_actions[:2]}")
+            self._decide_exhaust_off(ctx, dec, f"mpc: plan={best_actions[:2]}")
 
-        # Humidity devices: fall back to simple RH-deadband control since
-        # we don't have a reliable humidifier model yet
+        # Humidity: RH deadband fallback (no reliable humidifier model yet)
         deadband_rh = 2.0
         if ctx.avg_rh < (target_rh - deadband_rh):
-            await self._humidifier_on(ctx, "mpc: rh below target")
-            await self._dehumidifier_off(ctx, "mpc: rh below target")
+            self._decide_humidifier_on(ctx, dec, "mpc: rh below target")
+            self._decide_dehumidifier_off(ctx, dec, "mpc: rh below target")
         elif ctx.avg_rh > (target_rh + deadband_rh):
-            await self._humidifier_off(ctx, "mpc: rh above target")
-            await self._reduce_humidity(ctx, "mpc: rh above target")
+            self._decide_humidifier_off(ctx, dec, "mpc: rh above target")
+            self._decide_reduce_humidity(ctx, dec, "mpc: rh above target")
         else:
-            await self._humidifier_off(ctx, "mpc: rh in band")
-            await self._dehumidifier_off(ctx, "mpc: rh in band")
+            self._decide_humidifier_off(ctx, dec, "mpc: rh in band")
+            self._decide_dehumidifier_off(ctx, dec, "mpc: rh in band")
+
+        return dec
 
         # ------------------------------------------------------------------ #
     #  Night MPC mode                                                      #
     # ------------------------------------------------------------------ #
 
-    async def _apply_night_mpc(self, ctx: _Ctx) -> None:
+    async def _decide_night_mpc(self, ctx: _Ctx) -> ControlDecision:
         """MPC control at night using night targets with a dew-point floor.
 
         Runs the same MPC optimiser as daytime but uses night VPD, temperature,
@@ -1636,91 +1636,82 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ctx.data["debug_mpc_pred_vpd"]  = round(vpd_pred, 3)
         ctx.data["debug_mpc_plan"]      = str(best_actions[:3])
 
-        # Apply heater decision — but enforce dew floor unconditionally
+        dec = ControlDecision(mode="night_mpc")
+
         if h_want == 1:
-            await self._heater_on_if_allowed(ctx, f"night_mpc: plan={best_actions[:2]}")
+            self._decide_heater_on(ctx, dec, f"night_mpc: plan={best_actions[:2]}")
         else:
-            await self._heater_off(ctx, f"night_mpc: plan={best_actions[:2]}")
+            self._decide_heater_off(ctx, dec, f"night_mpc: plan={best_actions[:2]}")
 
-        # Dew-point floor: override heater if MPC left it off but we are
-        # at or below the dew point + margin
+        # Dew-point floor
         if not ctx.heater_on and ctx.avg_temp <= dew_floor:
-            ctx.data["debug_heater_reason"] = (
-                f"night_mpc: dew floor override "
-                f"(avg={ctx.avg_temp:.1f}°C <= floor={dew_floor:.1f}°C)"
-            )
-            await self._heater_on_if_allowed(
-                ctx, f"night MPC: dew floor {dew_floor:.1f}°C"
-            )
+            self._decide_heater_on(ctx, dec,
+                f"night_mpc: dew floor override (avg={ctx.avg_temp:.1f}°C <= floor={dew_floor:.1f}°C)")
 
-        # Apply exhaust decision from MPC
         if e_want == 1:
-            await self._exhaust_on_if_off(ctx, f"night_mpc: plan={best_actions[:2]}")
+            self._decide_exhaust_on(ctx, dec, f"night_mpc: plan={best_actions[:2]}")
         else:
-            await self._exhaust_off_if_on(ctx, f"night_mpc: plan={best_actions[:2]}")
+            self._decide_exhaust_off(ctx, dec, f"night_mpc: plan={best_actions[:2]}")
 
-        # Stage exhaust profile: only force-on override is applied on top of MPC.
-        # The auto profile is intentionally NOT applied — MPC already made the
-        # optimal exhaust decision; overriding it with "off if conditions ok"
-        # causes cycling as MPC immediately turns it back on.
+        # Stage exhaust profile: force-on only
         if exhaust_mode == "on":
-            ctx.data["debug_exhaust_reason"] = (
-                ctx.data.get("debug_exhaust_reason", "") + " [night profile: force_on]"
-            )
-            await self._exhaust_on_if_off(ctx, "night MPC: profile=on")
+            suffix = " [night profile: force_on]"
+            self._decide_exhaust_on(ctx, dec, (dec.exhaust_reason or "") + suffix)
 
-        # Humidity: simple RH deadband fallback (same as day MPC)
+        # Humidity: RH deadband fallback
         deadband_rh = 2.0
         if ctx.avg_rh < (ctx.night_target_rh - deadband_rh):
-            await self._humidifier_on(ctx, "night_mpc: rh below target")
-            await self._dehumidifier_off(ctx, "night_mpc: rh below target")
+            self._decide_humidifier_on(ctx, dec, "night_mpc: rh below target")
+            self._decide_dehumidifier_off(ctx, dec, "night_mpc: rh below target")
         elif ctx.avg_rh > (ctx.night_target_rh + deadband_rh):
-            await self._humidifier_off(ctx, "night_mpc: rh above target")
-            await self._reduce_humidity(ctx, "night_mpc: rh above target")
+            self._decide_humidifier_off(ctx, dec, "night_mpc: rh above target")
+            self._decide_reduce_humidity(ctx, dec, "night_mpc: rh above target")
         else:
-            await self._humidifier_off(ctx, "night_mpc: rh in band")
-            await self._dehumidifier_off(ctx, "night_mpc: rh in band")
+            self._decide_humidifier_off(ctx, dec, "night_mpc: rh in band")
+            self._decide_dehumidifier_off(ctx, dec, "night_mpc: rh in band")
+
+        return dec
 
         # ------------------------------------------------------------------ #
     #  Day hard limits                                                     #
     # ------------------------------------------------------------------ #
 
-    async def _apply_day_hard_limits(self, ctx: _Ctx) -> bool:
-        """Returns True if a hard limit was active."""
+    def _decide_hard_limits(self, ctx: _Ctx) -> ControlDecision | None:
+        """Returns a ControlDecision if a hard limit is active, None otherwise."""
         limit = self._eval_hard_limits(ctx)
         if limit is None:
-            return False
+            return None
 
-        ctx.data["control_mode"] = f"hard_limit:{limit}"
+        dec = ControlDecision(mode=f"hard_limit:{limit}")
 
         if limit == "temp_below_min":
-            await self._heater_on_if_allowed(ctx, "hard_limit: temp_below_min -> heater_on")
-            await self._exhaust_off_if_on(ctx, "hard_limit: temp_below_min -> exhaust_off")
+            self._decide_heater_on(ctx, dec, "hard_limit: temp_below_min -> heater_on")
+            self._decide_exhaust_off(ctx, dec, "hard_limit: temp_below_min -> exhaust_off")
         elif limit == "temp_above_max":
-            await self._heater_off(ctx, "hard_limit: temp_above_max -> heater_off")
-            await self._exhaust_on_if_off(ctx, "hard_limit: temp_above_max -> exhaust_on")
+            self._decide_heater_off(ctx, dec, "hard_limit: temp_above_max -> heater_off")
+            self._decide_exhaust_on(ctx, dec, "hard_limit: temp_above_max -> exhaust_on")
         elif limit == "rh_above_max":
             if ctx.avg_temp > ctx.min_temp:
-                await self._exhaust_on_if_off(ctx, "hard_limit: rh_above_max -> exhaust_on")
+                self._decide_exhaust_on(ctx, dec, "hard_limit: rh_above_max -> exhaust_on")
             if ctx.avg_temp > ctx.min_temp:
-                await self._heater_off(ctx, "hard_limit: rh_above_max -> heater_off")
-            await self._humidifier_off(ctx)
-            await self._dehumidifier_on(ctx)
+                self._decide_heater_off(ctx, dec, "hard_limit: rh_above_max -> heater_off")
+            self._decide_humidifier_off(ctx, dec)
+            self._decide_dehumidifier_on(ctx, dec)
         elif limit == "rh_below_min":
-            await self._exhaust_off_if_on(ctx, "hard_limit: rh_below_min -> exhaust_off")
+            self._decide_exhaust_off(ctx, dec, "hard_limit: rh_below_min -> exhaust_off")
             if ctx.avg_temp > ctx.min_temp:
-                await self._heater_off(ctx, "hard_limit: rh_below_min -> heater_off")
-            await self._dehumidifier_off(ctx)
-            await self._humidifier_on(ctx)
+                self._decide_heater_off(ctx, dec, "hard_limit: rh_below_min -> heater_off")
+            self._decide_dehumidifier_off(ctx, dec)
+            self._decide_humidifier_on(ctx, dec)
 
-        return True
+        return dec
 
     # ------------------------------------------------------------------ #
     #  VPD chase                                                           #
     # ------------------------------------------------------------------ #
 
-    async def _apply_vpd_chase(self, ctx: _Ctx) -> None:
-        ctx.data["control_mode"] = "vpd_chase"
+    def _decide_vpd_chase(self, ctx: _Ctx) -> ControlDecision:
+        dec = ControlDecision(mode="vpd_chase")
         # Use night targets during night window, day targets during day
         if ctx.is_day:
             target_vpd  = float(ctx.data.get("vpd_target_kpa",  STAGE_TARGET_VPD_KPA.get(ctx.stage, 1.00)))
@@ -1730,9 +1721,9 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             target_vpd  = ctx.night_vpd_target
             target_temp = ctx.night_target_temp
             target_rh   = ctx.night_target_rh
-        deadband    = float(ctx.data.get("vpd_deadband_kpa", 0.07))
-        temp_db     = 0.5   # °C deadband around target temp before acting
-        rh_db       = 2.0   # % RH deadband around target RH before acting
+        deadband = float(ctx.data.get("vpd_deadband_kpa", 0.07))
+        temp_db  = 0.5
+        rh_db    = 2.0
         low  = target_vpd - deadband
         high = target_vpd + deadband
 
@@ -1740,81 +1731,52 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ctx.data["debug_target_rh"]     = target_rh
 
         if ctx.vpd < low:
-            # VPD too low — air is too humid and/or too cold.
-            # Priority: raise temperature toward target using heater.
-            # Secondary: use dehumidifier if temp is already at/above target.
             if ctx.avg_temp < (target_temp - temp_db):
-                # Temp below target — heater is the right tool
-                await self._heater_on_if_allowed(ctx, "vpd_low: temp below target -> heater_on")
-                await self._exhaust_off_if_on(ctx, "vpd_low: temp below target -> exhaust_off")
-                await self._dehumidifier_off(ctx)
-                ctx.data["debug_dehumidifier_reason"] = "vpd_low: heating -> dehumidifier_off"
-                await self._humidifier_off(ctx)
-                ctx.data["debug_humidifier_reason"] = "vpd_low: heating -> humidifier_off"
+                self._decide_heater_on(ctx, dec, "vpd_low: temp below target -> heater_on")
+                self._decide_exhaust_off(ctx, dec, "vpd_low: temp below target -> exhaust_off")
+                self._decide_dehumidifier_off(ctx, dec, "vpd_low: heating -> dehumidifier_off")
+                self._decide_humidifier_off(ctx, dec, "vpd_low: heating -> humidifier_off")
             elif ctx.avg_temp > (target_temp + temp_db):
-                # Temp above target — exhaust to cool, dehumidifier to lower RH
-                await self._heater_off(ctx, "vpd_low: temp above target -> heater_off")
-                await self._reduce_humidity(ctx, "vpd_low: temp high -> reduce_humidity")
-                ctx.data["debug_dehumidifier_reason"] = "vpd_low: temp high -> reduce_humidity (dehumidifier or exhaust)"
-                await self._humidifier_off(ctx)
-                ctx.data["debug_humidifier_reason"] = "vpd_low: temp high -> humidifier_off"
+                self._decide_heater_off(ctx, dec, "vpd_low: temp above target -> heater_off")
+                self._decide_reduce_humidity(ctx, dec, "vpd_low: temp high -> reduce_humidity")
+                self._decide_humidifier_off(ctx, dec, "vpd_low: temp high -> humidifier_off")
             else:
-                # Temp at target — humidity is the issue, use dehumidifier
-                await self._heater_off(ctx, "vpd_low: temp ok -> heater_off")
-                await self._reduce_humidity(ctx, "vpd_low: temp ok -> reduce_humidity")
-                ctx.data["debug_dehumidifier_reason"] = "vpd_low: temp ok -> reduce_humidity (dehumidifier or exhaust)"
-                await self._humidifier_off(ctx)
-                ctx.data["debug_humidifier_reason"] = "vpd_low: -> humidifier_off"
+                self._decide_heater_off(ctx, dec, "vpd_low: temp ok -> heater_off")
+                self._decide_reduce_humidity(ctx, dec, "vpd_low: temp ok -> reduce_humidity")
+                self._decide_humidifier_off(ctx, dec, "vpd_low: -> humidifier_off")
 
         elif ctx.vpd > high:
-            # VPD too high — air is too dry and/or too warm.
-            # Priority: reduce temperature toward target using exhaust.
-            # Secondary: use humidifier if temp is already at/below target.
             if ctx.avg_temp > (target_temp + temp_db):
-                # Temp above target — exhaust to cool
-                await self._heater_off(ctx, "vpd_high: temp above target -> heater_off")
-                await self._exhaust_on_if_off(ctx, "vpd_high: temp above target -> exhaust_on")
-                await self._humidifier_off(ctx)
-                ctx.data["debug_humidifier_reason"] = "vpd_high: cooling -> humidifier_off"
-                await self._dehumidifier_off(ctx)
-                ctx.data["debug_dehumidifier_reason"] = "vpd_high: cooling -> dehumidifier_off"
+                self._decide_heater_off(ctx, dec, "vpd_high: temp above target -> heater_off")
+                self._decide_exhaust_on(ctx, dec, "vpd_high: temp above target -> exhaust_on")
+                self._decide_humidifier_off(ctx, dec, "vpd_high: cooling -> humidifier_off")
+                self._decide_dehumidifier_off(ctx, dec, "vpd_high: cooling -> dehumidifier_off")
             elif ctx.avg_temp < (target_temp - temp_db):
-                # Temp below target — humidifier to raise RH (raises VPD)
-                await self._heater_off(ctx, "vpd_high: temp below target -> heater_off")
-                await self._exhaust_off_if_on(ctx, "vpd_high: temp below target -> exhaust_off")
-                await self._humidifier_on(ctx)
-                ctx.data["debug_humidifier_reason"] = "vpd_high: temp low -> humidifier_on"
-                await self._dehumidifier_off(ctx)
-                ctx.data["debug_dehumidifier_reason"] = "vpd_high: temp low -> dehumidifier_off"
+                self._decide_heater_off(ctx, dec, "vpd_high: temp below target -> heater_off")
+                self._decide_exhaust_off(ctx, dec, "vpd_high: temp below target -> exhaust_off")
+                self._decide_humidifier_on(ctx, dec, "vpd_high: temp low -> humidifier_on")
+                self._decide_dehumidifier_off(ctx, dec, "vpd_high: temp low -> dehumidifier_off")
             else:
-                # Temp at target — humidity is the issue, use humidifier
-                await self._heater_off(ctx, "vpd_high: temp ok -> heater_off")
-                await self._exhaust_off_if_on(ctx, "vpd_high: temp ok -> exhaust_off")
-                await self._humidifier_on(ctx)
-                ctx.data["debug_humidifier_reason"] = "vpd_high: temp ok -> humidifier_on"
-                await self._dehumidifier_off(ctx)
-                ctx.data["debug_dehumidifier_reason"] = "vpd_high: -> dehumidifier_off"
+                self._decide_heater_off(ctx, dec, "vpd_high: temp ok -> heater_off")
+                self._decide_exhaust_off(ctx, dec, "vpd_high: temp ok -> exhaust_off")
+                self._decide_humidifier_on(ctx, dec, "vpd_high: temp ok -> humidifier_on")
+                self._decide_dehumidifier_off(ctx, dec, "vpd_high: -> dehumidifier_off")
 
         else:
-            # VPD in band — fine-tune temp and RH toward their targets
-            ctx.data["debug_humidifier_reason"]   = "vpd_inband"
-            ctx.data["debug_dehumidifier_reason"] = "vpd_inband"
-            await self._heater_off(ctx, "vpd_inband -> heater_off")
-            await self._exhaust_off_if_on(ctx, "vpd_inband -> exhaust_off")
-            # Nudge RH toward target within deadband
+            # VPD in band — nudge RH toward target
+            self._decide_heater_off(ctx, dec, "vpd_inband -> heater_off")
+            self._decide_exhaust_off(ctx, dec, "vpd_inband -> exhaust_off")
             if ctx.avg_rh < (target_rh - rh_db):
-                await self._humidifier_on(ctx)
-                await self._dehumidifier_off(ctx)
-                ctx.data["debug_humidifier_reason"]   = "vpd_inband: rh below target -> humidifier_on"
-                ctx.data["debug_dehumidifier_reason"] = "vpd_inband: rh below target -> dehumidifier_off"
+                self._decide_humidifier_on(ctx, dec, "vpd_inband: rh below target -> humidifier_on")
+                self._decide_dehumidifier_off(ctx, dec, "vpd_inband: rh below target -> dehumidifier_off")
             elif ctx.avg_rh > (target_rh + rh_db):
-                await self._reduce_humidity(ctx, "vpd_inband: rh above target -> reduce_humidity")
-                await self._humidifier_off(ctx)
-                ctx.data["debug_humidifier_reason"]   = "vpd_inband: rh above target -> humidifier_off"
-                ctx.data["debug_dehumidifier_reason"] = "vpd_inband: rh above target -> reduce_humidity (dehumidifier or exhaust)"
+                self._decide_reduce_humidity(ctx, dec, "vpd_inband: rh above target -> reduce_humidity")
+                self._decide_humidifier_off(ctx, dec, "vpd_inband: rh above target -> humidifier_off")
             else:
-                await self._humidifier_off(ctx)
-                await self._dehumidifier_off(ctx)
+                self._decide_humidifier_off(ctx, dec, "vpd_inband")
+                self._decide_dehumidifier_off(ctx, dec, "vpd_inband")
+
+        return dec
 
     # ------------------------------------------------------------------ #
     #  Hard limit evaluator                                                #
@@ -1826,6 +1788,84 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if ctx.avg_rh   < ctx.min_rh:  return "rh_below_min"
         if ctx.avg_rh   > ctx.max_rh:  return "rh_above_max"
         return None
+
+    # ------------------------------------------------------------------ #
+    #  Decision-building helpers                                           #
+    # ------------------------------------------------------------------ #
+    # These are the Phase 1 counterparts to the atomic device helpers.
+    # They populate a ControlDecision object instead of calling _async_switch.
+    # The decision is applied in bulk by _apply_decision at the end of the cycle.
+    # ctx.heater_on / ctx.exhaust_on etc. are still updated immediately so that
+    # later logic within the same cycle (e.g. dew floor checks) sees the right
+    # state — this preserves the existing intra-cycle dependency behaviour.
+
+    def _decide_heater_off(self, ctx: "_Ctx", dec: "ControlDecision", reason: str) -> None:
+        dec.heater_reason = reason
+        ctx.data["debug_heater_reason"] = reason
+        if ctx.heater_on and ctx.heater_eid and self._can_toggle(self.control.last_heater_change, ctx.heater_hold):
+            dec.heater = False
+            ctx.heater_on = False
+
+    def _decide_heater_on(self, ctx: "_Ctx", dec: "ControlDecision", reason: str) -> None:
+        dec.heater_reason = reason
+        ctx.data["debug_heater_reason"] = reason
+        if (
+            not ctx.heater_on and ctx.heater_eid
+            and self._heater_allowed_on(ctx.now)
+            and self._can_toggle(self.control.last_heater_change, ctx.heater_hold)
+        ):
+            dec.heater = True
+            ctx.heater_on = True
+
+    def _decide_exhaust_on(self, ctx: "_Ctx", dec: "ControlDecision", reason: str) -> None:
+        dec.exhaust_reason = reason
+        ctx.data["debug_exhaust_reason"] = reason
+        if not ctx.exhaust_on and ctx.exhaust_eid and self._can_toggle(self.control.last_exhaust_change, ctx.exhaust_hold):
+            dec.exhaust = True
+            ctx.exhaust_on = True
+
+    def _decide_exhaust_off(self, ctx: "_Ctx", dec: "ControlDecision", reason: str) -> None:
+        dec.exhaust_reason = reason
+        ctx.data["debug_exhaust_reason"] = reason
+        if ctx.exhaust_on and ctx.exhaust_eid and self._can_toggle(self.control.last_exhaust_change, ctx.exhaust_hold):
+            if self._exhaust_safety_blocks_off(ctx):
+                blocked = f"{reason} [SAFETY: blocked_off]"
+                dec.exhaust_reason = blocked
+                ctx.data["debug_exhaust_reason"] = blocked
+                return
+            dec.exhaust = False
+            ctx.exhaust_on = False
+
+    def _decide_humidifier_on(self, ctx: "_Ctx", dec: "ControlDecision", reason: str = "auto") -> None:
+        dec.humidifier_reason = reason
+        if not ctx.humidifier_on and ctx.humidifier_eid and self._can_toggle(self.control.last_humidifier_change, ctx.humidifier_hold):
+            dec.humidifier = True
+            ctx.humidifier_on = True
+
+    def _decide_humidifier_off(self, ctx: "_Ctx", dec: "ControlDecision", reason: str = "auto") -> None:
+        dec.humidifier_reason = reason
+        if ctx.humidifier_on and ctx.humidifier_eid and self._can_toggle(self.control.last_humidifier_change, ctx.humidifier_hold):
+            dec.humidifier = False
+            ctx.humidifier_on = False
+
+    def _decide_dehumidifier_on(self, ctx: "_Ctx", dec: "ControlDecision", reason: str = "auto") -> None:
+        dec.dehumidifier_reason = reason
+        if not ctx.dehumidifier_on and ctx.dehumidifier_eid and self._can_toggle(self.control.last_dehumidifier_change, ctx.dehumidifier_hold):
+            dec.dehumidifier = True
+            ctx.dehumidifier_on = True
+
+    def _decide_dehumidifier_off(self, ctx: "_Ctx", dec: "ControlDecision", reason: str = "auto") -> None:
+        dec.dehumidifier_reason = reason
+        if ctx.dehumidifier_on and ctx.dehumidifier_eid and self._can_toggle(self.control.last_dehumidifier_change, ctx.dehumidifier_hold):
+            dec.dehumidifier = False
+            ctx.dehumidifier_on = False
+
+    def _decide_reduce_humidity(self, ctx: "_Ctx", dec: "ControlDecision", reason: str = "auto") -> None:
+        """Reduce humidity: use dehumidifier if configured, otherwise exhaust fan."""
+        if ctx.dehumidifier_eid:
+            self._decide_dehumidifier_on(ctx, dec, reason)
+        else:
+            self._decide_exhaust_on(ctx, dec, f"{reason} [fallback: exhaust]")
 
     # ------------------------------------------------------------------ #
     #  Atomic device action helpers                                        #
@@ -1926,6 +1966,60 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ctx.circ_on = False
 
     # ------------------------------------------------------------------ #
+    #  Decision applicator                                                 #
+    # ------------------------------------------------------------------ #
+
+    async def _apply_decision(self, ctx: "_Ctx", dec: "ControlDecision") -> None:
+        """Apply a ControlDecision to hardware — all switch calls happen here.
+
+        This is the single point where decisions become actuations.
+        Hold-time bookkeeping and toggle counters are updated here,
+        not in the decision-building helpers that populated dec.
+        """
+        now = ctx.now
+
+        if dec.heater is not None and ctx.heater_eid:
+            await self._async_switch(ctx.heater_eid, dec.heater)
+            self.control.last_heater_change = now
+            self._record_action(f"Heater {'ON' if dec.heater else 'OFF'} · {dec.heater_reason}")
+            self._increment_toggle("heater")
+
+        if dec.exhaust is not None and ctx.exhaust_eid:
+            await self._async_switch(ctx.exhaust_eid, dec.exhaust)
+            self.control.last_exhaust_change = now
+            self._record_action(f"Exhaust {'ON' if dec.exhaust else 'OFF'} · {dec.exhaust_reason}")
+            self._increment_toggle("exhaust")
+
+        if dec.humidifier is not None and ctx.humidifier_eid:
+            await self._async_switch(ctx.humidifier_eid, dec.humidifier)
+            self.control.last_humidifier_change = now
+            self._record_action(f"Humidifier {'ON' if dec.humidifier else 'OFF'} · {dec.humidifier_reason}")
+            self._increment_toggle("humidifier")
+
+        if dec.dehumidifier is not None and ctx.dehumidifier_eid:
+            await self._async_switch(ctx.dehumidifier_eid, dec.dehumidifier)
+            self.control.last_dehumidifier_change = now
+            self._record_action(f"Dehumidifier {'ON' if dec.dehumidifier else 'OFF'} · {dec.dehumidifier_reason}")
+            self._increment_toggle("dehumidifier")
+
+        if dec.circ is not None and ctx.circ_eid:
+            await self._async_switch(ctx.circ_eid, dec.circ)
+            self._record_action(f"Circulation {'ON' if dec.circ else 'OFF'} · auto")
+
+        if dec.mode:
+            ctx.data["control_mode"] = dec.mode
+
+        # Propagate reason strings to data dict for debug sensors
+        if dec.heater_reason:
+            ctx.data["debug_heater_reason"] = dec.heater_reason
+        if dec.exhaust_reason:
+            ctx.data["debug_exhaust_reason"] = dec.exhaust_reason
+        if dec.humidifier_reason:
+            ctx.data["debug_humidifier_reason"] = dec.humidifier_reason
+        if dec.dehumidifier_reason:
+            ctx.data["debug_dehumidifier_reason"] = dec.dehumidifier_reason
+
+        # ------------------------------------------------------------------ #
     #  Top-level control dispatcher                                        #
     # ------------------------------------------------------------------ #
 
@@ -2286,33 +2380,40 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
 
         data["debug_exhaust_policy"] = "normal"
 
+        # ── Compute decision ──────────────────────────────────────────────────
+        # Each _decide_* method returns a ControlDecision describing what should
+        # happen this cycle.  No switches are touched yet.
+        dec: ControlDecision | None = None
+
         if drying:
-            await self._apply_drying_mode(ctx)
+            dec = self._decide_drying_mode(ctx)
         elif not is_day:
             if ctx.night_mode == NIGHT_MODE_MPC:
-                # MPC night mode — hard limits still take priority
-                hard_limit_active = await self._apply_day_hard_limits(ctx)
-                if not hard_limit_active:
-                    await self._apply_night_mpc(ctx)
+                dec = self._decide_hard_limits(ctx)
+                if dec is None:
+                    dec = await self._decide_night_mpc(ctx)
             elif ctx.night_mode in (NIGHT_MODE_VPD, NIGHT_MODE_VPD_NO_HEATER):
-                # Hard limits take priority over night VPD chase, same as day mode.
-                hard_limit_active = await self._apply_day_hard_limits(ctx)
-                if not hard_limit_active:
-                    await self._apply_night_vpd_chase(ctx)
+                dec = self._decide_hard_limits(ctx)
+                if dec is None:
+                    dec = await self._decide_night_vpd_chase(ctx)
             else:
-                await self._apply_night_mode(ctx)
+                dec = await self._decide_night_mode(ctx)
         else:
-            hard_limit_active = await self._apply_day_hard_limits(ctx)
-            if not hard_limit_active:
+            dec = self._decide_hard_limits(ctx)
+            if dec is None:
                 if ctx.day_mode == DAY_MODE_MPC:
-                    await self._apply_mpc_day(ctx)
+                    dec = await self._decide_mpc_day(ctx)
                 elif ctx.day_mode == DAY_MODE_LIMITS:
-                    ctx.data["control_mode"] = "limits_only"
+                    dec = ControlDecision(mode="limits_only")
                 elif data.get("vpd_chase_enabled", True):
-                    # Default / VPD Chase mode
-                    await self._apply_vpd_chase(ctx)
+                    dec = self._decide_vpd_chase(ctx)
                 else:
-                    ctx.data["control_mode"] = "limits_only"
+                    dec = ControlDecision(mode="limits_only")
+
+        # ── Apply decision ────────────────────────────────────────────────────
+        # All switch calls happen here — single point of actuation.
+        if dec is not None:
+            await self._apply_decision(ctx, dec)
 
         # Update previous readings for next poll's disturbance detection
         self.control.prev_avg_temp = data.get("avg_temp_c")
