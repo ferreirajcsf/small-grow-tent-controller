@@ -67,7 +67,7 @@ SENSORS = [
 
     # ── Observability ────────────────────────────────────────────────────────
     # VPD deadband performance — primary user-facing metric
-    ("vpd_pct_in_band",       "VPD % In Target Band (24h)", None, "%",  False),
+    ("vpd_pct_in_band",       "VPD % In Target Band",       None, "%",  False),
     ("vpd_pct_in_band_hours", "VPD Band Data Window",       None, "h",  False),
     ("vpd_out_of_band_s",     "VPD Out-of-Band Duration",   None, "s",  False),
     # Device toggle counters — TOTAL_INCREASING so HA natively computes rate/hour.
