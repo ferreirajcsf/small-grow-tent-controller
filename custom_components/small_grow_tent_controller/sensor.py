@@ -78,6 +78,9 @@ SENSORS = [
     ("exhaust_toggles",      "Exhaust Toggles",      None, None, False),
     ("humidifier_toggles",   "Humidifier Toggles",   None, None, False),
     ("dehumidifier_toggles", "Dehumidifier Toggles", None, None, False),
+    # Total polls with valid sensor readings — hidden diagnostic, useful for VPD band context
+    # (was written to the data dict every cycle but never exposed as a sensor entity until now)
+    ("vpd_polls_total",      "VPD Polls Total",      None, None, True),
 ]
 
 # Numeric sensors that should be recorded in long-term statistics

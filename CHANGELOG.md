@@ -1,3 +1,23 @@
+## [0.1.75] - 2026-04-09
+
+### Fixed
+
+- **Bug: heater max-run-time safety never fired via decide/apply path** — `_apply_decision`
+  (the Phase 1 refactored actuation point) was not updating `heater_on_since` when it turned
+  the heater on. The safety trip in `_apply_heater_safety` checks
+  `(now - heater_on_since).total_seconds() >= heater_max_run_s`, but because `heater_on_since`
+  was only set by the legacy atomic helper `_heater_on_if_allowed` (no longer called for most
+  control modes), the timer never started and the heater could run indefinitely regardless of
+  the **Heater Max Run Time** setting. `_apply_decision` now sets `heater_on_since = now` when
+  `dec.heater is True` and clears it to `None` when `dec.heater is False`, matching the
+  behaviour of the legacy path.
+
+- **`vpd_polls_total` was written to the data dict every poll but never surfaced as a sensor
+  entity** — the key was populated in `_update_observability` and initialised in
+  `_async_update_data`, but missing from the `SENSORS` list in `sensor.py`, making it
+  invisible in the HA UI. Added as a hidden diagnostic sensor (`VPD Polls Total`), consistent
+  with the other observability sensors.
+
 ## [0.1.74] - 2026-04-05
 
 ### Added

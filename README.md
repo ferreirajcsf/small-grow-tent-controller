@@ -137,7 +137,7 @@ Once set up, the integration creates a full set of entities grouped under a sing
 - **Select entities:** growth stage, day mode, night mode, and per-device mode selectors (heater, exhaust, humidifier, dehumidifier, circulation, light)
 - **Time helpers:** light on time, light off time
 - **Buttons:** Return All Devices to Auto, Re-identify MPC Model, Clear Last Note, Clear All Notes
-- **Diagnostic sensors** (hidden by default, enable via **Settings → Entities**): controller local time, is-day flag, light window, light/exhaust/heater/humidifier/dehumidifier decision reasons, heater target/error/lockout/runtime, ramped target temp, MPC model R² (temp + RH), MPC last identified timestamp, MPC ambient source, MPC predicted temp/RH/VPD/plan/score, disturbance reason and hold remaining
+- **Diagnostic sensors** (hidden by default, enable via **Settings → Entities**): controller local time, is-day flag, light window, light/exhaust/heater/humidifier/dehumidifier decision reasons, heater target/error/lockout/runtime, ramped target temp, MPC model R² (temp + RH), MPC last identified timestamp, MPC ambient source, MPC predicted temp/RH/VPD/plan/score, disturbance reason and hold remaining, VPD polls total
 
 ---
 

@@ -1981,6 +1981,14 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         if dec.heater is not None and ctx.heater_eid:
             await self._async_switch(ctx.heater_eid, dec.heater)
             self.control.last_heater_change = now
+            # Track continuous run time so the max-run-time safety trip fires correctly.
+            # _apply_heater_safety reads heater_on_since every cycle; if we don't set it
+            # here when the heater turns on via the decide/apply path it will never trip.
+            if dec.heater:
+                if self.control.heater_on_since is None:
+                    self.control.heater_on_since = now
+            else:
+                self.control.heater_on_since = None
             self._record_action(f"Heater {'ON' if dec.heater else 'OFF'} · {dec.heater_reason}")
             self._increment_toggle("heater")
 
