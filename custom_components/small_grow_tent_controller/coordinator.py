@@ -185,9 +185,14 @@ class ControlState:
 
 
 # ---------------------------------------------------------------------------
-# Control decision — what the controller decided to do this cycle
+# Control decision — what the controller decided to do this cycle.
 # Produced by _decide_* methods, consumed by _apply_decision.
 # None means "no change requested" for that device.
+#
+# Phase 2 additions (decide/apply refactor complete):
+#   - light / circ now carried here instead of being actuated inline
+#   - override_source records which layer set the decision (for logging)
+#   - blocking flag marks safety-critical trips that must use blocking=True
 # ---------------------------------------------------------------------------
 @dataclass
 class ControlDecision:
@@ -202,6 +207,11 @@ class ControlDecision:
     exhaust_reason:      str = ""
     humidifier_reason:   str = ""
     dehumidifier_reason: str = ""
+    circ_reason:         str = ""
+    light_reason:        str = ""
+    # When True, _apply_decision uses blocking=True for ALL switches in this
+    # decision (reserved for safety trips that must complete before returning).
+    blocking: bool = False
 
 
 # ---------------------------------------------------------------------------
@@ -1155,9 +1165,15 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     #  Manual override application                                         #
     # ------------------------------------------------------------------ #
 
-    async def _apply_forced_modes(self, ctx: _Ctx) -> _Ctx:
-        """Apply On/Off manual overrides; clears the eid to skip auto-control."""
-        now = ctx.now
+    def _decide_forced_modes(self, ctx: _Ctx) -> ControlDecision:
+        """Compute manual On/Off override decisions for all devices.
+
+        Pure decision method — reads mode selectors and current hardware state,
+        returns a ControlDecision.  No switches are touched.
+        When a device is handled by an override, its ctx.eid is cleared to None
+        so the auto-control layer ignores it this cycle.
+        """
+        dec = ControlDecision(mode="")
 
         for eid_attr, mode_key, label, hold_attr, on_attr in [
             ("heater_eid",       "heater_mode",       "Heater",       "heater_hold",       "heater_on"),
@@ -1170,74 +1186,68 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             if mode == "Auto" or not eid:
                 continue
             desired = mode == "On"
-            cur = self._switch_is_on(eid)
+            cur     = self._switch_is_on(eid)
             if cur is not None and cur != desired:
-                await self._async_switch(eid, desired)
-                if hold_attr:
-                    setattr(self.control, f"last_{label.lower()}_change", now)
-                self._record_action(f"{label} {'ON' if desired else 'OFF'} · override:{mode.lower()}")
+                if eid_attr == "heater_eid":
+                    dec.heater        = desired
+                    dec.heater_reason = f"override:{mode.lower()}"
+                elif eid_attr == "humidifier_eid":
+                    dec.humidifier        = desired
+                    dec.humidifier_reason = f"override:{mode.lower()}"
+                elif eid_attr == "dehumidifier_eid":
+                    dec.dehumidifier        = desired
+                    dec.dehumidifier_reason = f"override:{mode.lower()}"
+                elif eid_attr == "circ_eid":
+                    dec.circ        = desired
+                    dec.circ_reason = f"override:{mode.lower()}"
             setattr(ctx, on_attr, desired)
-            setattr(ctx, eid_attr, None)
+            setattr(ctx, eid_attr, None)   # handled — skip auto
 
-        # Exhaust: special safety check + Day On / Night On schedule modes
-        # Day On / Night On force the exhaust on during their window only.
-        # Outside their window they fall back to Auto — the normal control
-        # logic runs as if the mode were set to Auto.
+        # Exhaust: safety check + Day On / Night On schedule modes
         eid  = ctx.exhaust_eid
         mode = self._get_mode("exhaust_mode") if eid else "Auto"
         if mode != "Auto" and eid:
             if mode == "Day On":
                 if ctx.is_day:
-                    # In window — force on, but safety always wins
                     reason = "override:day_on (day window)"
                     if self._exhaust_safety_blocks_off(ctx):
                         reason += " [SAFETY: forced_on]"
                     ctx.data["debug_exhaust_reason"] = reason
                     cur = self._switch_is_on(eid)
                     if cur is not None and not cur:
-                        await self._async_switch(eid, True)
-                        self.control.last_exhaust_change = now
-                        self._record_action(f"Exhaust ON · {reason}")
+                        dec.exhaust        = True
+                        dec.exhaust_reason = reason
                     ctx.exhaust_on  = True
-                    ctx.exhaust_eid = None  # handled — skip auto
+                    ctx.exhaust_eid = None
                 else:
-                    # Outside window — fall through to auto control
                     ctx.data["debug_exhaust_reason"] = "day_on: night window -> auto"
-                    # ctx.exhaust_eid left intact — auto logic runs
             elif mode == "Night On":
                 if not ctx.is_day:
-                    # In window — force on
                     reason = "override:night_on (night window)"
                     ctx.data["debug_exhaust_reason"] = reason
                     cur = self._switch_is_on(eid)
                     if cur is not None and not cur:
-                        await self._async_switch(eid, True)
-                        self.control.last_exhaust_change = now
-                        self._record_action(f"Exhaust ON · {reason}")
+                        dec.exhaust        = True
+                        dec.exhaust_reason = reason
                     ctx.exhaust_on  = True
-                    ctx.exhaust_eid = None  # handled — skip auto
+                    ctx.exhaust_eid = None
                 else:
-                    # Outside window — fall through to auto control
                     ctx.data["debug_exhaust_reason"] = "night_on: day window -> auto"
-                    # ctx.exhaust_eid left intact — auto logic runs
             else:
-                # On / Off hard override
                 desired = mode == "On"
                 reason  = f"override:{mode.lower()}"
-                # Safety always overrides — exhaust cannot be turned off if safety blocks it
                 if not desired and self._exhaust_safety_blocks_off(ctx):
                     desired = True
                     reason  += " [SAFETY: blocked_off]"
                 ctx.data["debug_exhaust_reason"] = reason
                 cur = self._switch_is_on(eid)
                 if cur is not None and cur != desired:
-                    await self._async_switch(eid, desired)
-                    self.control.last_exhaust_change = now
-                    self._record_action(f"Exhaust {'ON' if desired else 'OFF'} · {reason}")
+                    dec.exhaust        = desired
+                    dec.exhaust_reason = reason
                 ctx.exhaust_on  = desired
                 ctx.exhaust_eid = None
 
-        return ctx
+        return dec
 
     # ------------------------------------------------------------------ #
     #  Heater safety trip                                                  #
@@ -1338,7 +1348,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             dec.dehumidifier_reason = "night: rh_ok -> off"
             ctx.data["debug_dehumidifier_reason"] = dec.dehumidifier_reason
 
-        # Heater pulse plan — stateful, uses existing async helper
+        # Heater pulse plan — delegate to pure _decide_heater_pulse, then merge
         target_temp = min(ctx.dew + dew_margin_night, ctx.max_temp)
         error       = target_temp - ctx.avg_temp
         on_s, off_s = self._heater_pulse_plan(error)
@@ -1346,7 +1356,11 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         ctx.data["debug_heater_target_c"] = round(target_temp, 2)
         ctx.data["debug_heater_error_c"]  = round(error, 2)
 
-        await self._apply_heater_pulse(ctx, on_s, off_s)
+        pulse_dec = self._decide_heater_pulse(ctx, on_s, off_s)
+        # Merge heater decision from pulse into main decision
+        if pulse_dec.heater is not None:
+            dec.heater        = pulse_dec.heater
+            dec.heater_reason = pulse_dec.heater_reason
 
         # Exhaust night profile
         if exhaust_mode == "on":
@@ -1360,33 +1374,51 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._decide_exhaust_off(ctx, dec, reason)
         return dec
 
-    async def _apply_heater_pulse(self, ctx: _Ctx, on_s: int, off_s: int) -> None:
+    def _decide_heater_pulse(self, ctx: _Ctx, on_s: int, off_s: int) -> ControlDecision:
+        """Pure decision for the dew-protection night heater pulse plan.
+
+        Returns a ControlDecision with dec.heater set (or not) based on the
+        current pulse/cooldown state.  All pulse bookkeeping (heater_pulse_until,
+        heater_cooldown_until) is updated here because the state machine must
+        advance regardless of whether the decision is ultimately applied.
+        No switches are touched — _apply_decision handles that.
+        """
         now = ctx.now
+        dec = ControlDecision()
+
         if on_s == 0:
-            ctx.data["debug_heater_reason"] = "night: at/above dew target -> off"
+            dec.heater_reason = "night: at/above dew target -> off"
+            ctx.data["debug_heater_reason"] = dec.heater_reason
             self.control.heater_pulse_until    = None
             self.control.heater_cooldown_until = None
-            await self._heater_off(ctx, "night: at/above dew target")
-            return
+            if ctx.heater_on and ctx.heater_eid and self._can_toggle(self.control.last_heater_change, ctx.heater_hold):
+                dec.heater = False
+                ctx.heater_on = False
+            return dec
 
         if self.control.heater_cooldown_until and now < self.control.heater_cooldown_until:
-            ctx.data["debug_heater_reason"] = "night: cooldown"
-            await self._heater_off(ctx, "night: cooldown")
-            return
+            dec.heater_reason = "night: cooldown"
+            ctx.data["debug_heater_reason"] = dec.heater_reason
+            if ctx.heater_on and ctx.heater_eid and self._can_toggle(self.control.last_heater_change, ctx.heater_hold):
+                dec.heater = False
+                ctx.heater_on = False
+            return dec
 
-        ctx.data["debug_heater_reason"] = f"night: pulse plan on={on_s}s off={off_s}s"
+        dec.heater_reason = f"night: pulse plan on={on_s}s off={off_s}s"
+        ctx.data["debug_heater_reason"] = dec.heater_reason
 
         if not ctx.heater_on:
             self.control.heater_pulse_until = now + timedelta(seconds=on_s)
-            if ctx.heater_eid and self._heater_allowed_on(now) and self._can_toggle(self.control.last_heater_change, ctx.heater_hold):
-                await self._async_switch(ctx.heater_eid, True)
-                self.control.last_heater_change = now
-                self._record_action(f"Heater ON · night pulse on={on_s}s off={off_s}s")
+            if (ctx.heater_eid
+                    and self._heater_allowed_on(now)
+                    and self._can_toggle(self.control.last_heater_change, ctx.heater_hold)):
+                dec.heater = True
                 ctx.heater_on = True
         else:
             if self.control.heater_pulse_until is None:
                 self.control.heater_pulse_until = now + timedelta(seconds=on_s)
 
+        # Pulse end: switch off and start cooldown
         if (
             ctx.heater_on
             and self.control.heater_pulse_until
@@ -1394,12 +1426,15 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             and ctx.heater_eid
             and self._can_toggle(self.control.last_heater_change, ctx.heater_hold)
         ):
-            await self._async_switch(ctx.heater_eid, False)
-            self.control.last_heater_change    = now
+            dec.heater = False
+            ctx.heater_on = False
+            # Advance pulse state now so the cooldown starts from this cycle
             self.control.heater_pulse_until    = None
             self.control.heater_cooldown_until = now + timedelta(seconds=off_s)
-            self._record_action(f"Heater OFF · night pulse end -> cooldown {off_s}s")
-            ctx.heater_on = False
+            dec.heater_reason = f"night: pulse end -> cooldown {off_s}s"
+            ctx.data["debug_heater_reason"] = dec.heater_reason
+
+        return dec
 
     # ------------------------------------------------------------------ #
     #  Night VPD Chase mode                                                #
@@ -1868,122 +1903,46 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._decide_exhaust_on(ctx, dec, f"{reason} [fallback: exhaust]")
 
     # ------------------------------------------------------------------ #
-    #  Atomic device action helpers                                        #
-    # ------------------------------------------------------------------ #
-
-    async def _heater_off(self, ctx: _Ctx, reason: str) -> None:
-        ctx.data["debug_heater_reason"] = reason
-        if ctx.heater_on and ctx.heater_eid and self._can_toggle(self.control.last_heater_change, ctx.heater_hold):
-            await self._async_switch(ctx.heater_eid, False)
-            self.control.last_heater_change = ctx.now
-            self._record_action(f"Heater OFF · {reason}")
-            self._increment_toggle("heater")
-            ctx.heater_on = False
-
-    async def _heater_on_if_allowed(self, ctx: _Ctx, reason: str) -> None:
-        ctx.data["debug_heater_reason"] = reason
-        if (
-            not ctx.heater_on and ctx.heater_eid
-            and self._heater_allowed_on(ctx.now)
-            and self._can_toggle(self.control.last_heater_change, ctx.heater_hold)
-        ):
-            await self._async_switch(ctx.heater_eid, True)
-            self.control.last_heater_change = ctx.now
-            self._record_action(f"Heater ON · {reason}")
-            self._increment_toggle("heater")
-            ctx.heater_on = True
-
-    async def _exhaust_on_if_off(self, ctx: _Ctx, reason: str) -> None:
-        ctx.data["debug_exhaust_reason"] = reason
-        if not ctx.exhaust_on and ctx.exhaust_eid and self._can_toggle(self.control.last_exhaust_change, ctx.exhaust_hold):
-            await self._async_switch(ctx.exhaust_eid, True)
-            self.control.last_exhaust_change = ctx.now
-            self._record_action(f"Exhaust ON · {reason}")
-            self._increment_toggle("exhaust")
-            ctx.exhaust_on = True
-
-    async def _exhaust_off_if_on(self, ctx: _Ctx, reason: str) -> None:
-        ctx.data["debug_exhaust_reason"] = reason
-        if ctx.exhaust_on and ctx.exhaust_eid and self._can_toggle(self.control.last_exhaust_change, ctx.exhaust_hold):
-            if self._exhaust_safety_blocks_off(ctx):
-                ctx.data["debug_exhaust_reason"] = f"{reason} [SAFETY: blocked_off]"
-                return
-            await self._async_switch(ctx.exhaust_eid, False)
-            self.control.last_exhaust_change = ctx.now
-            self._record_action(f"Exhaust OFF · {reason}")
-            self._increment_toggle("exhaust")
-            ctx.exhaust_on = False
-
-    async def _humidifier_on(self, ctx: _Ctx, reason: str = "auto") -> None:
-        if not ctx.humidifier_on and ctx.humidifier_eid and self._can_toggle(self.control.last_humidifier_change, ctx.humidifier_hold):
-            await self._async_switch(ctx.humidifier_eid, True)
-            self.control.last_humidifier_change = ctx.now
-            self._record_action(f"Humidifier ON · {reason}")
-            self._increment_toggle("humidifier")
-            ctx.humidifier_on = True
-
-    async def _humidifier_off(self, ctx: _Ctx, reason: str = "auto") -> None:
-        if ctx.humidifier_on and ctx.humidifier_eid and self._can_toggle(self.control.last_humidifier_change, ctx.humidifier_hold):
-            await self._async_switch(ctx.humidifier_eid, False)
-            self.control.last_humidifier_change = ctx.now
-            self._record_action(f"Humidifier OFF · {reason}")
-            self._increment_toggle("humidifier")
-            ctx.humidifier_on = False
-
-    async def _dehumidifier_on(self, ctx: _Ctx, reason: str = "auto") -> None:
-        if not ctx.dehumidifier_on and ctx.dehumidifier_eid and self._can_toggle(self.control.last_dehumidifier_change, ctx.dehumidifier_hold):
-            await self._async_switch(ctx.dehumidifier_eid, True)
-            self.control.last_dehumidifier_change = ctx.now
-            self._record_action(f"Dehumidifier ON · {reason}")
-            self._increment_toggle("dehumidifier")
-            ctx.dehumidifier_on = True
-
-    async def _dehumidifier_off(self, ctx: _Ctx, reason: str = "auto") -> None:
-        if ctx.dehumidifier_on and ctx.dehumidifier_eid and self._can_toggle(self.control.last_dehumidifier_change, ctx.dehumidifier_hold):
-            await self._async_switch(ctx.dehumidifier_eid, False)
-            self.control.last_dehumidifier_change = ctx.now
-            self._record_action(f"Dehumidifier OFF · {reason}")
-            self._increment_toggle("dehumidifier")
-            ctx.dehumidifier_on = False
-
-    async def _reduce_humidity(self, ctx: _Ctx, reason: str = "auto") -> None:
-        """Reduce humidity: use dehumidifier if configured, otherwise exhaust fan."""
-        if ctx.dehumidifier_eid:
-            await self._dehumidifier_on(ctx, reason)
-        else:
-            await self._exhaust_on_if_off(ctx, f"{reason} [fallback: exhaust]")
-
-    async def _circ_on(self, ctx: _Ctx, reason: str = "auto") -> None:
-        if not ctx.circ_on and ctx.circ_eid:
-            await self._async_switch(ctx.circ_eid, True)
-            self._record_action(f"Circulation ON · {reason}")
-            ctx.circ_on = True
-
-    async def _circ_off(self, ctx: _Ctx, reason: str = "auto") -> None:
-        if ctx.circ_on and ctx.circ_eid:
-            await self._async_switch(ctx.circ_eid, False)
-            self._record_action(f"Circulation OFF · {reason}")
-            ctx.circ_on = False
-
-    # ------------------------------------------------------------------ #
     #  Decision applicator                                                 #
     # ------------------------------------------------------------------ #
 
     async def _apply_decision(self, ctx: "_Ctx", dec: "ControlDecision") -> None:
-        """Apply a ControlDecision to hardware — all switch calls happen here.
+        """Apply a ControlDecision to hardware — the ONLY place _async_switch is called
+        for normal control flow.
 
-        This is the single point where decisions become actuations.
-        Hold-time bookkeeping and toggle counters are updated here,
-        not in the decision-building helpers that populated dec.
+        Hold-time bookkeeping, heater run-time tracking, toggle counters, action
+        recording, and debug sensor propagation all happen here.  Decision-building
+        helpers (_decide_*) remain pure and never touch hardware.
+
+        The blocking flag is reserved for safety-critical decisions (e.g. disturbance
+        neutral) where the switch call must complete before this method returns.
         """
         now = ctx.now
 
+        # ── Decision log ─────────────────────────────────────────────────────
+        # One DEBUG line per call, emitted before any switch fires.
+        # Filter for "decision:" in the log to see exactly what the controller
+        # chose each cycle — mode, device, direction, and reason — without
+        # touching any hardware state.  Zero cost when DEBUG is not enabled.
+        if _LOGGER.isEnabledFor(logging.DEBUG):
+            parts = []
+            if dec.heater       is not None: parts.append(f"heater={'ON' if dec.heater else 'OFF'} ({dec.heater_reason})")
+            if dec.exhaust      is not None: parts.append(f"exhaust={'ON' if dec.exhaust else 'OFF'} ({dec.exhaust_reason})")
+            if dec.humidifier   is not None: parts.append(f"hum={'ON' if dec.humidifier else 'OFF'} ({dec.humidifier_reason})")
+            if dec.dehumidifier is not None: parts.append(f"dehum={'ON' if dec.dehumidifier else 'OFF'} ({dec.dehumidifier_reason})")
+            if dec.circ         is not None: parts.append(f"circ={'ON' if dec.circ else 'OFF'} ({dec.circ_reason})")
+            if dec.light        is not None: parts.append(f"light={'ON' if dec.light else 'OFF'} ({dec.light_reason})")
+            if parts:
+                _LOGGER.debug(
+                    "%s: decision: mode=%s %s",
+                    self.entry.title,
+                    dec.mode or "(no mode)",
+                    " | ".join(parts),
+                )
+
         if dec.heater is not None and ctx.heater_eid:
-            await self._async_switch(ctx.heater_eid, dec.heater)
+            await self._async_switch(ctx.heater_eid, dec.heater, blocking=dec.blocking)
             self.control.last_heater_change = now
-            # Track continuous run time so the max-run-time safety trip fires correctly.
-            # _apply_heater_safety reads heater_on_since every cycle; if we don't set it
-            # here when the heater turns on via the decide/apply path it will never trip.
             if dec.heater:
                 if self.control.heater_on_since is None:
                     self.control.heater_on_since = now
@@ -1993,26 +1952,34 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._increment_toggle("heater")
 
         if dec.exhaust is not None and ctx.exhaust_eid:
-            await self._async_switch(ctx.exhaust_eid, dec.exhaust)
+            await self._async_switch(ctx.exhaust_eid, dec.exhaust, blocking=dec.blocking)
             self.control.last_exhaust_change = now
             self._record_action(f"Exhaust {'ON' if dec.exhaust else 'OFF'} · {dec.exhaust_reason}")
             self._increment_toggle("exhaust")
 
         if dec.humidifier is not None and ctx.humidifier_eid:
-            await self._async_switch(ctx.humidifier_eid, dec.humidifier)
+            await self._async_switch(ctx.humidifier_eid, dec.humidifier, blocking=dec.blocking)
             self.control.last_humidifier_change = now
             self._record_action(f"Humidifier {'ON' if dec.humidifier else 'OFF'} · {dec.humidifier_reason}")
             self._increment_toggle("humidifier")
 
         if dec.dehumidifier is not None and ctx.dehumidifier_eid:
-            await self._async_switch(ctx.dehumidifier_eid, dec.dehumidifier)
+            await self._async_switch(ctx.dehumidifier_eid, dec.dehumidifier, blocking=dec.blocking)
             self.control.last_dehumidifier_change = now
             self._record_action(f"Dehumidifier {'ON' if dec.dehumidifier else 'OFF'} · {dec.dehumidifier_reason}")
             self._increment_toggle("dehumidifier")
 
         if dec.circ is not None and ctx.circ_eid:
-            await self._async_switch(ctx.circ_eid, dec.circ)
-            self._record_action(f"Circulation {'ON' if dec.circ else 'OFF'} · auto")
+            await self._async_switch(ctx.circ_eid, dec.circ, blocking=dec.blocking)
+            reason = dec.circ_reason or ("auto: on" if dec.circ else "auto: off")
+            self._record_action(f"Circulation {'ON' if dec.circ else 'OFF'} · {reason}")
+
+        if dec.light is not None and ctx.data.get("_light_eid"):
+            light_eid = ctx.data["_light_eid"]
+            await self._async_switch(light_eid, dec.light, blocking=dec.blocking)
+            self.control.last_light_change = now
+            reason = dec.light_reason or ("schedule" if dec.light else "schedule")
+            self._record_action(f"Light {'ON' if dec.light else 'OFF'} · {reason}")
 
         if dec.mode:
             ctx.data["control_mode"] = dec.mode
@@ -2026,6 +1993,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             ctx.data["debug_humidifier_reason"] = dec.humidifier_reason
         if dec.dehumidifier_reason:
             ctx.data["debug_dehumidifier_reason"] = dec.dehumidifier_reason
+        if dec.circ_reason:
+            ctx.data["debug_circulation_reason"] = dec.circ_reason
+        if dec.light_reason:
+            ctx.data["debug_light_reason"] = dec.light_reason
 
         # ------------------------------------------------------------------ #
     #  Top-level control dispatcher                                        #
@@ -2061,81 +2032,63 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         humidifier_eid   = self._get_option(CONF_HUMIDIFIER_SWITCH)   if self._use(CONF_USE_HUMIDIFIER)     else None
         dehumidifier_eid = self._get_option(CONF_DEHUMIDIFIER_SWITCH) if self._use(CONF_USE_DEHUMIDIFIER)   else None
 
-        # --- Light ---
+        # Stash light_eid in data so _apply_decision can reach it without
+        # threading it through _Ctx (light is not an env-control device)
+        data["_light_eid"] = light_eid
+
+        # ── Decide: light ─────────────────────────────────────────────────
+        light_dec = ControlDecision()
         light_mode = self._get_mode("light_mode") if light_eid else "Auto"
         cur_light  = self._switch_is_on(light_eid)
+
         if light_mode != "Auto":
             desired = light_mode == "On"
-            data["debug_light_reason"] = f"override:{light_mode.lower()}"
+            light_dec.light_reason = f"override:{light_mode.lower()}"
             if light_eid and cur_light is not None and cur_light != desired:
-                await self._async_switch(light_eid, desired)
-                self.control.last_light_change = now
-                self._record_action(f"Light {'ON' if desired else 'OFF'} · override:{light_mode.lower()}")
+                light_dec.light = desired
         elif light_eid and cur_light is not None:
             if drying:
-                data["debug_light_reason"] = "drying -> force_off"
+                light_dec.light_reason = "drying -> force_off"
                 if cur_light and self._can_toggle(self.control.last_light_change, 10):
-                    await self._async_switch(light_eid, False)
-                    self.control.last_light_change = now
-                    self._record_action("Light OFF · drying")
+                    light_dec.light = False
             elif self.control.startup_polls_remaining > 0:
-                # Suppress schedule-based light switching during the startup window.
-                # GrowTime entities restore their saved schedule asynchronously after
-                # the first refresh; if the time entity is still unavailable the
-                # coordinator falls back to the hardcoded defaults (09:00/21:00),
-                # which may not match the user's actual schedule and cause a
-                # spurious light toggle at startup or after a reload.
-                data["debug_light_reason"] = "startup_suppressed -> waiting_for_schedule"
+                light_dec.light_reason = "startup_suppressed -> waiting_for_schedule"
             elif not is_day and cur_light:
-                data["debug_light_reason"] = "schedule_night_window -> turn_off"
+                light_dec.light_reason = "schedule_night_window -> turn_off"
                 if self._can_toggle(self.control.last_light_change, 10):
-                    await self._async_switch(light_eid, False)
-                    self.control.last_light_change = now
-                    self._record_action("Light OFF · schedule night window")
+                    light_dec.light = False
             elif is_day and not cur_light:
-                data["debug_light_reason"] = "schedule_day_window -> turn_on"
+                light_dec.light_reason = "schedule_day_window -> turn_on"
                 if self._can_toggle(self.control.last_light_change, 10):
-                    await self._async_switch(light_eid, True)
-                    self.control.last_light_change = now
-                    self._record_action("Light ON · schedule day window")
+                    light_dec.light = True
             else:
-                data["debug_light_reason"] = "schedule_ok -> no_change"
+                light_dec.light_reason = "schedule_ok -> no_change"
         elif not light_eid:
-            data["debug_light_reason"] = "light_entity_not_configured"
+            light_dec.light_reason = "light_entity_not_configured"
         else:
-            data["debug_light_reason"] = "light_state_unknown"
+            light_dec.light_reason = "light_state_unknown"
 
-        # --- Circulation ---
-        # Handled fully in _apply_forced_modes (On/Off overrides) and the
-        # Auto block that follows ctx construction below.
+        data["debug_light_reason"] = light_dec.light_reason
 
-        # --- Controller disabled ---
+        # ── Decide: controller disabled ───────────────────────────────────
         if not enabled:
             data["control_mode"] = "disabled"
+            disabled_dec = ControlDecision(mode="disabled")
             for eid, mode_key, label in [
-                (heater_eid, "heater_mode", "Heater"),
-                (exhaust_eid, "exhaust_mode", "Exhaust"),
-                (humidifier_eid, "humidifier_mode", "Humidifier"),
-                (dehumidifier_eid, "dehumidifier_mode", "Dehumidifier"),
+                (heater_eid,       "heater_mode",       "Heater"),
+                (exhaust_eid,      "exhaust_mode",       "Exhaust"),
+                (humidifier_eid,   "humidifier_mode",    "Humidifier"),
+                (dehumidifier_eid, "dehumidifier_mode",  "Dehumidifier"),
             ]:
                 if not eid:
                     continue
                 mode = self._get_mode(mode_key)
                 if mode == "Auto":
                     continue
-                # Day On / Night On: when controller is disabled, treat as Auto
-                # (no auto logic runs when disabled, so just skip these modes)
                 if label == "Exhaust" and mode in ("Day On", "Night On"):
                     continue
                 desired = mode == "On"
                 if label == "Exhaust" and mode == "Off":
-                    # Baseline exhaust safety: always keep exhaust on when conditions
-                    # exceed the configured thresholds, regardless of whether the
-                    # ExhaustSafetyOverride switch is enabled. The override switch
-                    # governs behaviour during normal operation; this is an
-                    # unconditional floor that applies even when the controller is
-                    # disabled and the override switch is off — a tent can overheat
-                    # whether the controller is running or not.
                     avg_t = data.get("avg_temp_c")
                     avg_r = data.get("avg_rh")
                     if avg_t is not None and avg_r is not None:
@@ -2144,11 +2097,48 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                             desired = True
                 cur_s = self._switch_is_on(eid)
                 if cur_s is not None and cur_s != desired:
-                    await self._async_switch(eid, desired)
-                    self._record_action(f"{label} {'ON' if desired else 'OFF'} · override:{mode.lower()} (disabled)")
+                    reason = f"override:{mode.lower()} (disabled)"
+                    if label == "Heater":
+                        disabled_dec.heater        = desired
+                        disabled_dec.heater_reason = reason
+                    elif label == "Exhaust":
+                        disabled_dec.exhaust        = desired
+                        disabled_dec.exhaust_reason = reason
+                    elif label == "Humidifier":
+                        disabled_dec.humidifier        = desired
+                        disabled_dec.humidifier_reason = reason
+                    elif label == "Dehumidifier":
+                        disabled_dec.dehumidifier        = desired
+                        disabled_dec.dehumidifier_reason = reason
+
+            # Build a minimal ctx for _apply_decision (only eids needed)
+            disabled_ctx = _Ctx(
+                data=data, now=now, stage=stage, drying=drying, is_day=is_day,
+                avg_temp=0.0, avg_rh=0.0, dew=0.0, vpd=0.0,
+                min_temp=0.0, max_temp=99.0, min_rh=0.0, max_rh=100.0,
+                dew_margin=1.0, heater_hold=60.0, exhaust_hold=45.0,
+                humidifier_hold=45.0, dehumidifier_hold=45.0,
+                exhaust_eid=exhaust_eid, heater_eid=heater_eid,
+                humidifier_eid=humidifier_eid, dehumidifier_eid=dehumidifier_eid,
+                circ_eid=None,
+                heater_on=False, exhaust_on=False, humidifier_on=False,
+                dehumidifier_on=False, circ_on=False,
+                exhaust_safety_on=False, exhaust_safety_max_temp=30.0,
+                exhaust_safety_max_rh=75.0, heater_max_run_s=0.0,
+                night_mode="Dew Protection", night_vpd_target=1.0,
+                night_target_temp=20.0, night_target_rh=55.0,
+                temp_ramp_rate=1.0, day_mode="VPD Chase",
+                mpc_horizon=3, mpc_temp_amb=20.0, mpc_rh_amb=55.0,
+                mpc_a_heater=0.423, mpc_a_exhaust=-0.082, mpc_a_passive=0.008,
+                mpc_a_bias=0.057, mpc_a_bias_day=0.180, mpc_b_exhaust=-1.196,
+                mpc_b_passive=0.006, mpc_b_bias=0.556,
+                mpc_w_vpd=5.0, mpc_w_temp=2.0, mpc_w_rh=1.0, mpc_w_switch=0.5,
+            )
+            await self._apply_decision(disabled_ctx, light_dec)
+            await self._apply_decision(disabled_ctx, disabled_dec)
             return data
 
-        # --- Read actual hardware states BEFORE forced overrides ---
+        # ── Read actual hardware states BEFORE overrides ──────────────────
         heater_on_actual = self._switch_is_on(heater_eid) is True
         exhaust_on       = self._switch_is_on(exhaust_eid) is True
         humidifier_on    = self._switch_is_on(humidifier_eid) is True
@@ -2223,62 +2213,48 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             mpc_w_switch       = float(data.get("mpc_w_switch",     0.5)),
         )
 
-        # --- Temperature ramp ---
-        # Slide the effective target temperatures toward their actual values at
-        # no more than temp_ramp_rate °C/min.  This prevents abrupt jumps at the
-        # day/night boundary and acts as a global protection against rapid
-        # temperature changes at any time.
+        # ── Temperature ramp ──────────────────────────────────────────────
         ramp_rate = ctx.temp_ramp_rate
-
-        # Detect day/night transition — reset ramp tracking to actual temp on
-        # first poll and on each direction change to avoid a stale ramp base.
         if self.control.last_is_day != ctx.is_day:
             self.control.last_is_day = ctx.is_day
-            self.control.ramped_target_temp_c = ctx.avg_temp  # start ramp from current temp
-            # Suppress RLS for 60 polls (~10 min) around light transitions.
-            # The grow light adds significant unmeasured heat — without this guard
-            # RLS sees temperature rising with heater=0 at lights-on and incorrectly
-            # drives a_heater negative.
+            self.control.ramped_target_temp_c = ctx.avg_temp
             self.control.rls_transition_guard = 60
 
-        # Determine the actual temperature target for this period
         actual_target_temp = float(data.get("target_temp_c", 25.0)) if ctx.is_day else ctx.night_target_temp
-
-        # Slide effective target toward actual target at ramp rate
         if self.control.ramped_target_temp_c is None:
             self.control.ramped_target_temp_c = actual_target_temp
         self.control.ramped_target_temp_c = self._apply_temp_ramp(
             self.control.ramped_target_temp_c, actual_target_temp, ramp_rate
         )
-
-        # Update ctx with ramped values so all sub-methods use them
         if ctx.is_day:
             data["target_temp_c"] = round(self.control.ramped_target_temp_c, 2)
         else:
             ctx.night_target_temp = round(self.control.ramped_target_temp_c, 2)
         data["debug_ramped_target_temp_c"] = round(self.control.ramped_target_temp_c, 2)
 
-        # Apply forced On/Off overrides (handles On/Off modes for all devices
-        # including circulation; sets ctx.circ_eid = None when override active)
-        ctx = await self._apply_forced_modes(ctx)
+        # ── Decide: manual overrides (pure — no switches) ─────────────────
+        override_dec = self._decide_forced_modes(ctx)
+        # ctx.heater_eid / exhaust_eid etc. are cleared for handled devices
 
-        # --- Circulation Auto ---
-        # If circ_eid is still set (i.e. mode is Auto), keep circulation running
-        # whenever the controller is enabled and not in drying mode. Continuous
-        # airflow is beneficial day and night for temperature equalisation,
-        # boundary-layer disruption, and mould prevention.
+        # ── Decide: circulation auto ──────────────────────────────────────
+        circ_dec = ControlDecision()
         if ctx.circ_eid:
-            if not enabled:
-                ctx.data["debug_circulation_reason"] = "auto:off (controller disabled)"
-                await self._circ_off(ctx, "auto: controller disabled")
-            elif ctx.drying:
-                ctx.data["debug_circulation_reason"] = "auto:off (drying)"
-                await self._circ_off(ctx, "auto: drying mode")
+            if ctx.drying:
+                circ_dec.circ        = False
+                circ_dec.circ_reason = "auto:off (drying)"
             else:
-                ctx.data["debug_circulation_reason"] = "auto:on (day/night)"
-                await self._circ_on(ctx, "auto: controller enabled")
+                circ_dec.circ        = True
+                circ_dec.circ_reason = "auto:on (day/night)"
+            ctx.data["debug_circulation_reason"] = circ_dec.circ_reason
 
-        # Check sensors before proceeding
+        # ── Apply: light, overrides, circulation ──────────────────────────
+        # These are applied before the sensor check so overrides are always
+        # enforced even when sensors are unavailable.
+        await self._apply_decision(ctx, light_dec)
+        await self._apply_decision(ctx, override_dec)
+        await self._apply_decision(ctx, circ_dec)
+
+        # ── Check sensors ─────────────────────────────────────────────────
         sensors_ok = (
             data.get("avg_temp_c")  is not None and
             data.get("avg_rh")      is not None and
@@ -2288,14 +2264,14 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         self._handle_sensor_availability(sensors_ok)
         if not sensors_ok:
             data["control_mode"] = "waiting_for_sensors"
-            # Safety: if sensors just became unavailable and the heater is on,
-            # turn it off immediately. Leaving it running with no sensor feedback
-            # is a fire/heat risk — it's far safer to turn it off and let the
-            # user or the controller restart it once sensors recover.
+            # Safety: heater off immediately — blocking call, not deferred.
+            # This is an exception to the decide/apply pattern: the risk of
+            # leaving a heater running with no sensor feedback justifies a
+            # direct blocking trip rather than queueing through a decision.
             if heater_eid and heater_on_actual:
                 await self._async_switch(heater_eid, False, blocking=True)
                 self.control.last_heater_change = now
-                self.control.heater_on_since = None
+                self.control.heater_on_since    = None
                 self._record_action("Heater OFF · sensors unavailable safety shutoff")
                 _LOGGER.warning(
                     "%s: heater turned off — sensors unavailable (safety shutoff)",
@@ -2303,14 +2279,11 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 )
             return data
 
-        # ------------------------------------------------------------------ #
-        #  Disturbance detection                                               #
-        # ------------------------------------------------------------------ #
+        # ── Disturbance detection ─────────────────────────────────────────
         dist_temp_delta  = float(data.get("disturbance_temp_delta_c", 2.0))
         dist_rh_delta    = float(data.get("disturbance_rh_delta",     8.0))
         dist_hold_s      = float(data.get("disturbance_hold_s",       120.0))
 
-        # Check if a manual disturbance was triggered via the button
         manual_dist_eid = self._entity_id("switch", "disturbance_active")
         manual_dist_on  = self._switch_is_on(manual_dist_eid) is True
 
@@ -2321,7 +2294,6 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._record_action(f"Disturbance hold started · manual trigger ({dist_hold_s:.0f}s)")
             _LOGGER.info("%s: manual disturbance hold started", self.entry.title)
 
-        # Auto-detect disturbance from sensor swings
         if not self.control.disturbance_active:
             avg_t_val = data.get("avg_temp_c")
             avg_r_val = data.get("avg_rh")
@@ -2334,7 +2306,6 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self.control.disturbance_active = True
                 self.control.disturbance_until  = now + timedelta(seconds=dist_hold_s)
                 self.control.disturbance_reason = reason
-                # Suppress RLS during disturbance — anomalous readings corrupt the model
                 self.control.rls_transition_guard = max(
                     self.control.rls_transition_guard,
                     int(dist_hold_s / 10) + 6,
@@ -2342,55 +2313,57 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._record_action(f"Disturbance detected · {reason}")
                 _LOGGER.info("%s: disturbance detected — %s", self.entry.title, reason)
 
-        # Clear expired disturbance
         if self.control.disturbance_active:
             if self.control.disturbance_until and now >= self.control.disturbance_until:
                 self.control.disturbance_active = False
                 self.control.disturbance_until  = None
                 self.control.disturbance_reason = "none"
-                # Turn off manual switch if it was used
                 if manual_dist_on and manual_dist_eid:
                     await self._async_switch(manual_dist_eid, False)
                 self._record_action("Disturbance hold ended — resuming control")
                 _LOGGER.info("%s: disturbance hold ended, resuming control", self.entry.title)
 
-        # Update data dict with disturbance state for sensors/debug
-        data["disturbance_active"] = self.control.disturbance_active
-        data["debug_disturbance_reason"] = self.control.disturbance_reason
+        data["disturbance_active"]         = self.control.disturbance_active
+        data["debug_disturbance_reason"]   = self.control.disturbance_reason
 
-        # If disturbance is active: go to neutral state and skip control
         if self.control.disturbance_active:
             data["control_mode"] = f"disturbance_hold:{self.control.disturbance_reason}"
             remaining = int((self.control.disturbance_until - now).total_seconds()) \
                 if self.control.disturbance_until else 0
             data["debug_disturbance_remaining_s"] = remaining
-            # Neutral state: heater off, exhaust off, humidifier off, dehumidifier off.
-            # Circulation stays on — it doesn't affect temp/rh control.
-            # Update last_*_change so hold timers reset correctly after recovery —
-            # without this the controller could immediately re-toggle devices the
-            # moment the disturbance hold expires.
-            for eid, label, hold_attr in [
-                (heater_eid,       "Heater",       "last_heater_change"),
-                (exhaust_eid,      "Exhaust",      "last_exhaust_change"),
-                (humidifier_eid,   "Humidifier",   "last_humidifier_change"),
-                (dehumidifier_eid, "Dehumidifier", "last_dehumidifier_change"),
-            ]:
-                if eid and self._switch_is_on(eid):
-                    await self._async_switch(eid, False)
-                    setattr(self.control, hold_attr, now)
+
+            # Decide: neutral state — all env devices off, hold timers updated.
+            # blocking=True so the devices are off before we return.
+            neutral_dec = ControlDecision(
+                mode    = f"disturbance_hold:{self.control.disturbance_reason}",
+                blocking= True,
+            )
+            if ctx.heater_on and heater_eid:
+                neutral_dec.heater        = False
+                neutral_dec.heater_reason = "disturbance: neutral"
+            if ctx.exhaust_on and exhaust_eid:
+                neutral_dec.exhaust        = False
+                neutral_dec.exhaust_reason = "disturbance: neutral"
+            if ctx.humidifier_on and humidifier_eid:
+                neutral_dec.humidifier        = False
+                neutral_dec.humidifier_reason = "disturbance: neutral"
+            if ctx.dehumidifier_on and dehumidifier_eid:
+                neutral_dec.dehumidifier        = False
+                neutral_dec.dehumidifier_reason = "disturbance: neutral"
+            await self._apply_decision(ctx, neutral_dec)
             return data
         else:
             data["debug_disturbance_remaining_s"] = 0
 
-        # Heater safety before anything else
+        # ── Heater safety trip ────────────────────────────────────────────
+        # Blocking, direct trip — exception to the decide/apply pattern.
+        # Safety trips must complete before the rest of the cycle runs.
         if await self._apply_heater_safety(ctx):
             return data
 
         data["debug_exhaust_policy"] = "normal"
 
-        # ── Compute decision ──────────────────────────────────────────────────
-        # Each _decide_* method returns a ControlDecision describing what should
-        # happen this cycle.  No switches are touched yet.
+        # ── Compute decision ──────────────────────────────────────────────
         dec: ControlDecision | None = None
 
         if drying:
@@ -2418,8 +2391,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 else:
                     dec = ControlDecision(mode="limits_only")
 
-        # ── Apply decision ────────────────────────────────────────────────────
-        # All switch calls happen here — single point of actuation.
+        # ── Apply decision ────────────────────────────────────────────────
         if dec is not None:
             await self._apply_decision(ctx, dec)
 

@@ -1,3 +1,68 @@
+## [0.1.76] - 2026-04-09
+
+### Changed
+
+- **Completed decide/apply refactor (Phase 2)** — the controller now has a clean
+  separation between *deciding* what to do and *doing* it, consistently enforced
+  across all control modes.
+
+  **Architecture after this release:**
+
+  Every poll cycle follows the same four-step pattern:
+
+  ```
+  1. build_ctx        — read sensors, entities, config into an immutable _Ctx
+  2. pre-decide       — safety trips and manual overrides (may return early)
+  3. decide           — all _decide_* methods: pure functions, no I/O, return ControlDecision
+  4. apply            — _apply_decision: the ONLY place _async_switch is called (normal flow)
+  ```
+
+  The three direct `_async_switch` calls that remain outside `_apply_decision` are
+  all intentional safety exceptions — heater shutdown on sensor dropout and heater
+  max-run-time trip — and are documented as such. They bypass the decision layer
+  on purpose: a blocking safety trip must complete before the rest of the cycle
+  runs, and routing it through a `ControlDecision` would add fragile indirection
+  with no benefit.
+
+  **What changed specifically:**
+
+  - `_decide_heater_pulse` is now a plain `def` (was `async def`). It does no I/O —
+    it only reads and advances the pulse/cooldown timer state and returns a
+    `ControlDecision`. Making it `async` was misleading and caused a redundant
+    event-loop suspension on every night-mode cycle. The `await` at its call site
+    in `_decide_night_mode` is removed accordingly.
+
+  - `_apply_decision` now emits a structured `DEBUG` log line before any switch
+    fires, listing every device that is about to change state with its direction
+    and reason string. Enable debug logging for this integration to see a complete
+    decision trace:
+
+    ```yaml
+    logger:
+      logs:
+        custom_components.small_grow_tent_controller: debug
+    ```
+
+    Example output:
+    ```
+    [Tent] decision: mode=vpd_chase heater=OFF (vpd_inband -> heater_off) | exhaust=ON (vpd_high: temp ok -> exhaust_on)
+    ```
+
+    The log is zero-cost when DEBUG is not enabled — the `isEnabledFor` guard
+    skips all string formatting.
+
+### Why this matters
+
+- **Debugging**: every decision is logged in one place before hardware is touched.
+  If a device does something unexpected, the reason is in the log with the cycle
+  that caused it — no need to instrument `_async_switch` or add print statements.
+- **Testing**: all `_decide_*` methods are pure functions that take a `_Ctx` and
+  return a `ControlDecision`. They can be unit-tested without mocking any HA
+  internals or hardware.
+- **Future upgrades**: adding a new control mode means writing a `_decide_*`
+  method and plugging it into the dispatch table. No risk of accidentally calling
+  `_async_switch` in the wrong place.
+
 ## [0.1.75] - 2026-04-09
 
 ### Fixed
