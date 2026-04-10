@@ -1298,32 +1298,17 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------ #
 
     def _decide_drying_mode(self, ctx: _Ctx) -> ControlDecision:
-        dec = ControlDecision()
-        limit = self._eval_hard_limits(ctx)
-        dec.mode = "drying_hard_limits_only" if limit is None else f"drying_hard_limit:{limit}"
+        # Gap A fix: route through _decide_hard_limits first — same as every
+        # other mode.  Previously this duplicated the limit logic inline, meaning
+        # a change to hard-limit behaviour needed updating in two places.
+        hard_dec = self._decide_hard_limits(ctx)
+        if hard_dec is not None:
+            hard_dec.mode = f"drying_{hard_dec.mode}"
+            return hard_dec
 
-        if limit is None:
-            self._decide_heater_off(ctx, dec, "drying: in-band -> neutral")
-            self._decide_exhaust_off(ctx, dec, "drying: in-band -> neutral")
-        elif limit == "temp_below_min":
-            self._decide_heater_on(ctx, dec, "drying: temp_below_min -> heater_on")
-            self._decide_exhaust_off(ctx, dec, "drying: temp_below_min -> exhaust_off")
-        elif limit == "temp_above_max":
-            self._decide_heater_off(ctx, dec, "drying: temp_above_max -> heater_off")
-            self._decide_exhaust_on(ctx, dec, "drying: temp_above_max -> exhaust_on")
-        elif limit == "rh_above_max":
-            if ctx.avg_temp > ctx.min_temp:
-                self._decide_exhaust_on(ctx, dec, "drying: rh_above_max -> exhaust_on")
-            if ctx.avg_temp > ctx.min_temp:
-                self._decide_heater_off(ctx, dec, "drying: rh_above_max -> heater_off")
-            self._decide_humidifier_off(ctx, dec)
-            self._decide_dehumidifier_on(ctx, dec)
-        elif limit == "rh_below_min":
-            self._decide_exhaust_off(ctx, dec, "drying: rh_below_min -> exhaust_off")
-            if ctx.avg_temp > ctx.min_temp:
-                self._decide_heater_off(ctx, dec, "drying: rh_below_min -> heater_off")
-            self._decide_dehumidifier_off(ctx, dec)
-            self._decide_humidifier_on(ctx, dec)
+        dec = ControlDecision(mode="drying_hard_limits_only")
+        self._decide_heater_off(ctx, dec, "drying: in-band -> neutral")
+        self._decide_exhaust_off(ctx, dec, "drying: in-band -> neutral")
         return dec
 
     # ------------------------------------------------------------------ #
@@ -1726,13 +1711,19 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             self._decide_heater_off(ctx, dec, "hard_limit: temp_above_max -> heater_off")
             self._decide_exhaust_on(ctx, dec, "hard_limit: temp_above_max -> exhaust_on")
         elif limit == "rh_above_max":
+            # Gap B fix: exhaust and heater are gated on avg_temp > min_temp —
+            # exhausting or shutting off the heater in a cold tent makes things
+            # worse.  Dehum fires unconditionally: humidity control is independent
+            # of temperature and the dehumidifier won't make the tent colder.
             if ctx.avg_temp > ctx.min_temp:
                 self._decide_exhaust_on(ctx, dec, "hard_limit: rh_above_max -> exhaust_on")
-            if ctx.avg_temp > ctx.min_temp:
                 self._decide_heater_off(ctx, dec, "hard_limit: rh_above_max -> heater_off")
             self._decide_humidifier_off(ctx, dec)
             self._decide_dehumidifier_on(ctx, dec)
         elif limit == "rh_below_min":
+            # Gap B fix: same rationale — exhaust and heater gated on temperature,
+            # humidifier fires unconditionally because adding humidity doesn't
+            # affect temperature meaningfully.
             self._decide_exhaust_off(ctx, dec, "hard_limit: rh_below_min -> exhaust_off")
             if ctx.avg_temp > ctx.min_temp:
                 self._decide_heater_off(ctx, dec, "hard_limit: rh_below_min -> heater_off")
@@ -1772,11 +1763,15 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 self._decide_dehumidifier_off(ctx, dec, "vpd_low: heating -> dehumidifier_off")
                 self._decide_humidifier_off(ctx, dec, "vpd_low: heating -> humidifier_off")
             elif ctx.avg_temp > (target_temp + temp_db):
+                # Gap D fix: exhaust off in all vpd_low branches — ventilating
+                # when VPD is already too low (humid) would make it worse.
                 self._decide_heater_off(ctx, dec, "vpd_low: temp above target -> heater_off")
+                self._decide_exhaust_off(ctx, dec, "vpd_low: temp above target -> exhaust_off")
                 self._decide_reduce_humidity(ctx, dec, "vpd_low: temp high -> reduce_humidity")
                 self._decide_humidifier_off(ctx, dec, "vpd_low: temp high -> humidifier_off")
             else:
                 self._decide_heater_off(ctx, dec, "vpd_low: temp ok -> heater_off")
+                self._decide_exhaust_off(ctx, dec, "vpd_low: temp ok -> exhaust_off")
                 self._decide_reduce_humidity(ctx, dec, "vpd_low: temp ok -> reduce_humidity")
                 self._decide_humidifier_off(ctx, dec, "vpd_low: -> humidifier_off")
 
@@ -1818,6 +1813,15 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
     # ------------------------------------------------------------------ #
 
     def _eval_hard_limits(self, ctx: _Ctx) -> str | None:
+        # Gap E note: only one limit fires per cycle — the first match wins.
+        # Priority order (intentional):
+        #   1. temp_below_min  — heating a cold tent is the most urgent safety response
+        #   2. temp_above_max  — cooling an overheating tent
+        #   3. rh_below_min    — tent is too dry (less urgent than temperature)
+        #   4. rh_above_max    — tent is too humid
+        # Consequence of simultaneous violations: if temp is below min AND rh is
+        # above max (cold + humid), the heater turns on and the dehumidifier does
+        # NOT fire.  RH will naturally drop as the tent warms.  This is intentional.
         if ctx.avg_temp < ctx.min_temp: return "temp_below_min"
         if ctx.avg_temp > ctx.max_temp: return "temp_above_max"
         if ctx.avg_rh   < ctx.min_rh:  return "rh_below_min"
@@ -2389,6 +2393,10 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
                 elif data.get("vpd_chase_enabled", True):
                     dec = self._decide_vpd_chase(ctx)
                 else:
+                    # Gap C note: vpd_chase_enabled gates day VPD Chase only.
+                    # Night VPD Chase and VPD Chase (No Heater) are selected via
+                    # the night_mode selector and are intentionally independent of
+                    # this switch — night mode is a separate control surface.
                     dec = ControlDecision(mode="limits_only")
 
         # ── Apply decision ────────────────────────────────────────────────

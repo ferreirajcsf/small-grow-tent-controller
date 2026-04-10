@@ -1,4 +1,47 @@
+## [0.1.77] - 2026-04-09
+
+### Fixed
+
+Five gaps found during a control-spec review. No behaviour changed except where
+explicitly noted — all fixes either consolidate duplicate logic or add missing
+device decisions that were always intended but omitted.
+
+- **Gap A — Drying mode now routes through `_decide_hard_limits` first**, consistent
+  with every other mode. Previously `_decide_drying_mode` duplicated the hard-limit
+  branches inline. This meant a change to hard-limit behaviour (e.g. the Gap B fix
+  below) had to be applied in two places and could silently diverge. Drying now calls
+  `_decide_hard_limits()` and prefixes the mode string with `"drying_"` so the cycle
+  log is unchanged.
+
+- **Gap B — `rh_above_max` double-guard collapsed and intent documented.** The
+  `rh_above_max` branch in `_decide_hard_limits` had two consecutive
+  `if avg_temp > min_temp:` guards (exhaust ON, then heater OFF) that should have
+  been one. Collapsed to a single guard. Added a comment explaining why exhaust and
+  heater are temperature-gated (don't exhaust or shut off the heater in a cold tent)
+  while dehum fires unconditionally (humidity control is independent of temperature).
+  Same rationale documented for the matching `rh_below_min` branch.
+
+- **Gap C — `vpd_chase_enabled` scope documented.** The switch gates day VPD Chase
+  only. Night VPD Chase and VPD Chase (No Heater) are selected via the night mode
+  selector and are intentionally independent of this switch — night mode is a separate
+  control surface. Added a comment at the dispatch site making this explicit.
+
+- **Gap D — Missing `exhaust=OFF` in two `vpd_low` branches of `_decide_vpd_chase`.**
+  When VPD is too low (tent too humid) and temperature is at or above target, exhaust
+  was not explicitly set — its state carried over from the previous cycle, making
+  the behaviour non-deterministic across cycles. Both branches now explicitly set
+  `exhaust=OFF` with the reason `"vpd_low: temp ok/above target -> exhaust_off"`.
+  Ventilating when VPD is already too low would push it further from target.
+
+- **Gap E — Hard limit priority order documented in `_eval_hard_limits`.** When
+  multiple limits are breached simultaneously (e.g. temp below min AND rh above max),
+  only the first match fires. The order `temp_below_min → temp_above_max →
+  rh_below_min → rh_above_max` is intentional — heating a cold tent is the most
+  urgent response, and RH will naturally drop as the tent warms. Added an inline
+  comment explaining the priority rationale and the simultaneous-violation consequence.
+
 ## [0.1.76] - 2026-04-09
+ - 2026-04-09
 
 ### Changed
 
