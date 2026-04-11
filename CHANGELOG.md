@@ -1,4 +1,42 @@
+## [0.1.78] - 2026-04-10
+
+### Changed
+
+- **README — MPC vs VPD Chase seasonal guidance added** — a new section explains when
+  to use MPC (heater actively cycling, model fitted from recent history, R² above 0.3)
+  and when to switch to VPD Chase (summer, heater not firing, model degraded). This
+  formalises guidance that was only available as word-of-mouth from the troubleshooting
+  sessions that prompted it.
+
+- **README — RLS caveat expanded** — the RLS section now explicitly warns that RLS
+  requires the heater to cycle on and off to correctly identify `a_heater`. If the
+  heater hasn't fired for days or weeks, the forgetting factor will wash all parameters
+  toward zero, causing MPC to degrade silently. Leave RLS off in warm months.
+
+- **README — `a_bias_day` documented** — the day-bias parameter (default 0.180 °C/step,
+  accounts for grow-light self-heating) was present in the settings table but not
+  explained. Now noted explicitly.
+
+- **README — two new troubleshooting entries added:**
+  - *Temperature spikes above max_temp at lights-on* — explains that `max_temp` is a
+    safety ceiling not a target, and that a value close to night temperature will trigger
+    the hard limit every morning. Recommends 28–30°C.
+  - *MPC parameters collapsed (a_heater near zero)* — explains the RLS collapse
+    mechanism and the fix (re-identify + turn RLS off).
+
+- **`mpc_identify.py` — updated for 1–3 sensor support (was hardcoded to 2)**
+  - `ENTITY_CANOPY_TEMP`, `ENTITY_TOP_TEMP`, `ENTITY_CANOPY_RH`, `ENTITY_TOP_RH` replaced
+    with `TEMP_SENSOR_ENTITIES` and `RH_SENSOR_ENTITIES` lists. Add or remove entries to
+    match however many sensors you have configured in the integration (1–3 of each).
+    The script averages all configured sensors at each timestep, matching the
+    integration's own averaging behaviour introduced in v0.1.69.
+  - `build_dataset()` refactored to accept lists of series instead of four fixed arguments.
+  - Usage header updated to recommend the built-in **Re-identify MPC Model** button as
+    the primary method; the script is now positioned as a secondary option for users who
+    need validation plots or a longer history window than the HA recorder holds.
+
 ## [0.1.77] - 2026-04-09
+ - 2026-04-09
 
 ### Fixed
 

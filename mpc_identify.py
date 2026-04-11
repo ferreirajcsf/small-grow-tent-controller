@@ -20,10 +20,21 @@ Where:
 
 Usage
 -----
+**Recommended:** Use the built-in Re-identify MPC Model button in the integration
+dashboard — it reads HA recorder history directly, runs the same OLS regression,
+and writes parameters back to the number entities without leaving HA.
+
+Use this script when you want:
+- Validation plots (not available in the in-HA button)
+- Identification from a longer history window than the HA recorder holds
+- Running identification on a different machine with a copy of the DB
+
+Steps:
 1. Copy this script to your HA machine (or a machine with access to the DB).
-2. Edit the CONFIGURATION section below.
+2. Edit the CONFIGURATION section below — set TEMP_SENSOR_ENTITIES and
+   RH_SENSOR_ENTITIES to match your configured sensor entity IDs.
 3. Run:  python3 mpc_identify.py
-4. Paste the printed parameters into your grow tent controller config.
+4. Paste the printed parameters into your controller's MPC number entities.
 
 Requirements: numpy, scipy, pandas, matplotlib
     pip install numpy scipy pandas matplotlib
@@ -52,12 +63,18 @@ import matplotlib.dates as mdates
 HA_DB_PATH = "/config/home-assistant_v2.db"
 
 # Entity IDs — update to match your exact entity IDs in HA
-ENTITY_CANOPY_TEMP   = "sensor.sht41_1_temperature"
-ENTITY_TOP_TEMP      = "sensor.sht41_2_temperature"
-ENTITY_CANOPY_RH     = "sensor.sht41_1_humidity"
-ENTITY_TOP_RH        = "sensor.sht41_2_humidity"
-ENTITY_HEATER        = "switch.heatergrowtent"
-ENTITY_EXHAUST       = "switch.exhaustgrowtent"
+# Temperature sensors: sensor 1 is required, sensors 2 and 3 are optional.
+# Add or remove entries from each list depending on how many you have configured.
+TEMP_SENSOR_ENTITIES = [
+    "sensor.sht41_1_temperature",   # sensor 1 (required)
+    "sensor.sht41_2_temperature",   # sensor 2 (optional — remove if not configured)
+]
+RH_SENSOR_ENTITIES = [
+    "sensor.sht41_1_humidity",      # sensor 1 (required)
+    "sensor.sht41_2_humidity",      # sensor 2 (optional — remove if not configured)
+]
+ENTITY_HEATER  = "switch.heatergrowtent"
+ENTITY_EXHAUST = "switch.exhaustgrowtent"
 
 # How many days of history to use for fitting
 HISTORY_DAYS = 7
@@ -144,35 +161,34 @@ def resample_forward_fill(series: pd.Series, freq: str) -> pd.Series:
 
 
 def build_dataset(
-    canopy_temp: pd.Series,
-    top_temp: pd.Series,
-    canopy_rh: pd.Series,
-    top_rh: pd.Series,
+    temp_series: list,
+    rh_series: list,
     heater: pd.Series,
     exhaust: pd.Series,
     resample_s: int,
 ) -> pd.DataFrame:
-    """Resample all series to common grid and compute average temp/RH."""
+    """Resample all series to common grid and compute average temp/RH.
+
+    Accepts 1–3 temperature and 1–3 RH series — all configured sensors are
+    averaged together, matching the behaviour of the integration itself.
+    """
     freq = f"{resample_s}s"
 
-    ct = resample_forward_fill(parse_numeric(canopy_temp), freq)
-    tt = resample_forward_fill(parse_numeric(top_temp),    freq)
-    cr = resample_forward_fill(parse_numeric(canopy_rh),   freq)
-    tr = resample_forward_fill(parse_numeric(top_rh),      freq)
-    h  = resample_forward_fill(parse_switch(heater),       freq)
-    e  = resample_forward_fill(parse_switch(exhaust),      freq)
+    temps_r = [resample_forward_fill(parse_numeric(s), freq) for s in temp_series]
+    rhs_r   = [resample_forward_fill(parse_numeric(s), freq) for s in rh_series]
+    h = resample_forward_fill(parse_switch(heater),  freq)
+    e = resample_forward_fill(parse_switch(exhaust), freq)
 
-    df = pd.DataFrame({
-        "canopy_temp": ct,
-        "top_temp":    tt,
-        "canopy_rh":   cr,
-        "top_rh":      tr,
-        "heater":      h,
-        "exhaust":     e,
-    }).dropna()
+    data = {"heater": h, "exhaust": e}
+    for i, t in enumerate(temps_r, 1):
+        data[f"temp_{i}"] = t
+    for i, r in enumerate(rhs_r, 1):
+        data[f"rh_{i}"] = r
 
-    df["avg_temp"] = (df["canopy_temp"] + df["top_temp"]) / 2.0
-    df["avg_rh"]   = (df["canopy_rh"]  + df["top_rh"])   / 2.0
+    df = pd.DataFrame(data).dropna()
+
+    df["avg_temp"] = sum(df[f"temp_{i}"] for i in range(1, len(temps_r)+1)) / len(temps_r)
+    df["avg_rh"]   = sum(df[f"rh_{i}"]   for i in range(1, len(rhs_r)+1))   / len(rhs_r)
 
     return df
 
@@ -513,21 +529,20 @@ def main():
 
     log("Loading entity histories...")
     try:
-        canopy_temp = load_entity_history(conn, ENTITY_CANOPY_TEMP, since)
-        top_temp    = load_entity_history(conn, ENTITY_TOP_TEMP,    since)
-        canopy_rh   = load_entity_history(conn, ENTITY_CANOPY_RH,   since)
-        top_rh      = load_entity_history(conn, ENTITY_TOP_RH,      since)
-        heater      = load_entity_history(conn, ENTITY_HEATER,      since)
-        exhaust     = load_entity_history(conn, ENTITY_EXHAUST,     since)
+        temp_series = [load_entity_history(conn, eid, since) for eid in TEMP_SENSOR_ENTITIES]
+        rh_series   = [load_entity_history(conn, eid, since) for eid in RH_SENSOR_ENTITIES]
+        heater      = load_entity_history(conn, ENTITY_HEATER,  since)
+        exhaust     = load_entity_history(conn, ENTITY_EXHAUST, since)
     except ValueError as e:
         print(f"\nERROR: {e}")
         sys.exit(1)
     finally:
         conn.close()
 
+    log(f"  Loaded {len(temp_series)} temperature sensor(s), {len(rh_series)} humidity sensor(s)")
     print()
     log(f"Resampling to {RESAMPLE_S}s intervals...")
-    df = build_dataset(canopy_temp, top_temp, canopy_rh, top_rh, heater, exhaust, RESAMPLE_S)
+    df = build_dataset(temp_series, rh_series, heater, exhaust, RESAMPLE_S)
     log(f"  Dataset: {len(df):,} samples spanning "
         f"{(df.index[-1]-df.index[0]).total_seconds()/3600:.1f} hours")
     log(f"  Heater on: {df['heater'].mean()*100:.1f}% of time")

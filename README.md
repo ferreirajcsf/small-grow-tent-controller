@@ -95,6 +95,8 @@ Key diagnostic sensors for MPC (hidden by default, enable in **Settings → Enti
 
 When enabled, the controller continuously adapts the MPC model parameters from live observations using a forgetting-factor RLS algorithm. This means the model automatically compensates for seasonal changes, equipment changes, and anything else that shifts your tent's thermal behaviour — without needing to manually re-identify the model. Off by default; enable once you are satisfied with basic MPC performance.
 
+> **When to use RLS:** Only enable it when the heater is actively cycling on and off during the period you want RLS to learn from. RLS needs to observe both heater ON and heater OFF transitions to correctly identify `a_heater`. If the heater never fires (e.g. during summer months when the tent is warm enough without it), RLS gets no signal for the heater coefficient and the forgetting factor will slowly wash all parameters toward zero over days or weeks — causing MPC to make progressively worse decisions. In this case, leave RLS off and re-identify the model manually when conditions change.
+
 **Grow Journal**
 - Built-in timestamped grow log — record observations, training events, nutrient changes, anything
 - Notes persist across restarts in HA's `.storage` directory
@@ -214,7 +216,7 @@ Once the integration is running, tune it from the entity controls in your dashbo
 | **MPC Horizon Steps** | How many steps ahead the MPC plans (1–6, default 3). Higher = more lookahead but exponentially more computation. |
 | **MPC Ambient Temp / RH** | The ambient conditions used by the MPC model. Updated automatically from your lung room sensor, outdoor weather, or both — depending on what is configured. |
 | **MPC Weather Blend** | Blend ratio between lung room sensor (1.0) and outdoor weather entity (0.0). Default 0.9 — strongly prefers the lung room sensor but lets outdoor conditions contribute slightly. Only active when both sources are configured. |
-| **MPC model coefficients** | a_heater, a_exhaust, a_passive, a_bias (night), a_bias_day, b_exhaust, b_passive, b_bias — identified automatically via the Re-identify button. |
+| **MPC model coefficients** | a_heater, a_exhaust, a_passive, a_bias (night), **a_bias_day** (day only — accounts for grow-light self-heating, default 0.180 °C/step), b_exhaust, b_passive, b_bias — identified automatically via the Re-identify button. |
 | **MPC cost weights** | Weight VPD, Weight Temp, Weight RH, Switch Penalty — tune these to adjust how aggressively the MPC prioritises each objective. |
 | **Re-identify MPC Model** | Button — runs OLS regression on recent sensor history inside HA and updates all MPC parameters automatically. Results are written to the Grow Journal. |
 | **MPC Identification Days** | How many days of history to use for re-identification (1–30, default 7). |
@@ -311,6 +313,24 @@ Configure how much history to use with the **MPC Identification Days** slider (d
 
 ---
 
+## MPC vs VPD Chase — seasonal guidance
+
+MPC is most effective when **both the heater and exhaust are actively cycling**. The model is a function of two inputs (heater on/off, exhaust on/off) — it needs to observe both devices toggling to correctly identify how much each one affects temperature and humidity.
+
+**Use MPC when:**
+- The heater fires regularly (cooler months, or tents in unheated spaces)
+- You have run Re-identify MPC Model from at least 5–7 days of real history
+- The R² values for both temp and RH are above 0.3 (ideally above 0.5)
+
+**Switch to VPD Chase when:**
+- The heater has not been firing for several weeks (e.g. summer)
+- Your MPC R² values are low and re-identification isn't improving them
+- You are not running a heater at all
+
+VPD Chase requires no model and no identification — it reacts to real sensor readings using straightforward rules. During periods when heating is not needed, it will typically outperform a degraded MPC model. When conditions change and the heater comes back into use, run Re-identify MPC Model again and switch back to MPC.
+
+---
+
 ## Example Dashboard
 
 ![Dashboard Screenshot](images/dashboard_screenshot.png)
@@ -367,6 +387,12 @@ Check that your lung room sensor and/or outdoor weather entity are configured in
 
 **MPC doesn't seem to be improving**
 Check the R² diagnostic sensors (**MPC Model R² Temp** and **MPC Model R² RH**) — values below 0.5 suggest the model is a poor fit for your tent. Press **Re-identify MPC Model** to fit the model to your current sensor history. If performance is still poor, try reducing the Switch Penalty weight to allow the controller to act more freely, or increase the horizon from 3 to 5–6 steps.
+
+**Temperature spikes above max_temp immediately after lights-on**
+The grow light heats the tent quickly from a cold start. If `max_temp` is set close to the night temperature, the hard limit (`temp_above_max`) will fire within minutes of lights-on, overriding MPC or VPD Chase. The fix is to raise `max_temp` — it is a safety ceiling, not an operating target. The controller's active modes (VPD Chase, MPC) will keep temperature in the right range through exhaust control without needing a tight hard limit. A `max_temp` of 28–30°C is typical for most grows.
+
+**MPC parameters have collapsed (a_heater near zero, a_passive at floor value)**
+If the heater has not fired for an extended period (days to weeks) and RLS is enabled, the forgetting factor will wash `a_heater` and related parameters toward zero. MPC will then behave strangely — the model no longer believes the heater does anything. Fix: press **Re-identify MPC Model** to reset parameters from real history, then **turn RLS off** until the heater is cycling regularly again. See *MPC vs VPD Chase — seasonal guidance* above.
 
 **RLS is enabled but parameters are changing too fast / too slow**
 Adjust the **RLS Forgetting Factor (λ)**. At λ=0.999 (default) the model has an effective memory of ~2.8 hours, adapting to changes over days. Increase toward 1.000 for slower adaptation; decrease toward 0.990 for faster. If parameters drift to physically implausible values, press **Re-identify MPC Model** to reset them to a known-good baseline.
