@@ -1016,7 +1016,12 @@ views:
                   {% if not notes or notes | count == 0 %}
                   *No notes yet. Add your first note above.*
                   {% else %}
-                  {% for n in notes %}
+                  {% set total = notes | count %}
+                  {% if total > 5 %}*Showing last 5 of {{ total }} notes — use Clear Last to remove older ones.*
+
+                  ---
+                  {% endif %}
+                  {% for n in notes[-5:] %}
                   **{{ n.ts }}** — {{ n.text }}
                   {% if not loop.last %}
 
