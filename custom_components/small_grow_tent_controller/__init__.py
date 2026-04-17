@@ -134,6 +134,33 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await async_setup_toggle_counter_store(hass, entry)
     await async_setup_vpd_band_store(hass, entry)
 
+    # Fire a one-time persistent notification on first install pointing the user
+    # to the example dashboard. The notes store records whether its storage file
+    # existed before this setup — if it didn't, this is a genuinely new install
+    # rather than a restart or HA update.
+    if coordinator._notes_store.is_new_install:
+        hass.async_create_task(
+            hass.services.async_call(
+                "persistent_notification",
+                "create",
+                {
+                    "title": "Grow Tent Controller — Dashboard",
+                    "message": (
+                        "Setup complete! 🌱\n\n"
+                        "An example dashboard is available in the repository. "
+                        "To install it, go to **Settings → Dashboards**, create a new dashboard, "
+                        "switch to YAML mode, and paste the contents of "
+                        "[Examples/dashboard.yaml]"
+                        "(https://github.com/ferreirajcsf/small-grow-tent-controller"
+                        "/blob/main/Examples/dashboard.yaml) "
+                        "from the repository.\n\n"
+                        "Dismiss this notification once you have set up your dashboard."
+                    ),
+                    "notification_id": f"small_grow_tent_controller_dashboard_{entry.entry_id}",
+                },
+            )
+        )
+
     await coordinator.async_config_entry_first_refresh()
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     entry.async_on_unload(entry.add_update_listener(_async_update_listener))

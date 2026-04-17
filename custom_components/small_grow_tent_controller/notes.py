@@ -38,11 +38,15 @@ class NotesStore:
     def __init__(self, hass: HomeAssistant, entry_id: str) -> None:
         self._store = Store(hass, _STORAGE_VERSION, f"{DOMAIN}.notes.{entry_id}")
         self._notes: list[dict[str, str]] = []
+        self.is_new_install: bool = False
 
     async def async_load(self) -> None:
         data = await self._store.async_load()
         if data and isinstance(data.get("notes"), list):
             self._notes = data["notes"]
+        else:
+            # data is None → storage file did not exist → this is a fresh install
+            self.is_new_install = data is None
 
     @property
     def notes(self) -> list[dict[str, str]]:

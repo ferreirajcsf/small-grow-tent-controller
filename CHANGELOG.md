@@ -1,4 +1,28 @@
+## [0.1.79] - 2026-04-17
+
+### Added
+
+- **First-install dashboard notification** — on a genuine new install (not a
+  restart or HA update), a persistent notification is created in the HA
+  notification bell pointing the user to the example dashboard in the
+  repository. The notification stays until dismissed and includes a direct link
+  to `Examples/dashboard.yaml` on GitHub. It fires once per integration
+  instance and never again on subsequent restarts.
+
+  Detection is based on whether the notes storage file already exists on disk
+  at setup time — a missing file means the integration has never run on this HA
+  instance before. This is the same condition that initialises all other
+  persistent stores, so no additional state or helper entity is needed.
+
+### Changed
+
+- **`Examples/dashboard.yaml`** — Grow Journal now shows the last 5 notes only.
+  When more than 5 notes are stored, a header shows the total count and
+  suggests using Clear Last to remove older entries. All notes remain stored;
+  only the rendered view is limited.
+
 ## [0.1.78] - 2026-04-10
+ - 2026-04-10
 
 ### Changed
 
