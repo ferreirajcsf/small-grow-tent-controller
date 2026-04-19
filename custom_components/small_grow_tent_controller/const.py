@@ -1,5 +1,5 @@
 DOMAIN = "small_grow_tent_controller"
-VERSION = "0.1.80"
+VERSION = "0.1.81"
 
 PLATFORMS = ["sensor", "switch", "select", "number", "time", "binary_sensor", "button"]
 
@@ -136,22 +136,31 @@ STAGE_NIGHT_TARGET_TEMP_C = {
     "Drying":            16.0,
 }
 
+# Night VPD targets are intentionally lower than day targets — the tent is
+# cooler and plants are not transpiring at full rate during the dark period.
+# Values are derived from STAGE_NIGHT_TARGET_TEMP_C + STAGE_NIGHT_TARGET_RH
+# so they are internally consistent with the other night defaults.
 STAGE_NIGHT_TARGET_VPD_KPA = {
-    "Seedling":          0.70,
-    "Early Vegetative":  0.95,
-    "Late Vegetative":   1.10,
-    "Early Bloom":       1.25,
-    "Late Bloom":        1.45,
-    "Drying":            0.90,
+    "Seedling":          0.50,
+    "Early Vegetative":  0.70,
+    "Late Vegetative":   0.80,
+    "Early Bloom":       0.85,
+    "Late Bloom":        1.00,
+    "Drying":            0.70,
 }
 
+# Night RH defaults are calculated to be consistent with STAGE_NIGHT_TARGET_VPD_KPA
+# at STAGE_NIGHT_TARGET_TEMP_C using a -1.5°C leaf offset.
+# Formula: RH = (SVP_leaf - VPD_target) / SVP_air * 100
+# Previously these were identical to the day RH defaults, which implied the same
+# VPD as day — making the night VPD target effectively unreachable at default settings.
 STAGE_NIGHT_TARGET_RH = {
-    "Seedling":          59.0,
-    "Early Vegetative":  50.5,
-    "Late Vegetative":   47.0,
-    "Early Bloom":       41.0,
-    "Late Bloom":        29.0,
-    "Drying":            41.5,
+    "Seedling":          68.3,
+    "Early Vegetative":  61.1,
+    "Late Vegetative":   59.0,
+    "Early Bloom":       57.0,
+    "Late Bloom":        48.3,
+    "Drying":            52.3,
 }
 
 # Exhaust mode extended options (day/night schedule awareness)

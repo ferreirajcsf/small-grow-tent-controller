@@ -1,4 +1,34 @@
+## [0.1.81] - 2026-04-19
+
+### Fixed
+
+- **Night VPD and RH stage defaults were identical to day defaults**, making the
+  night VPD target unreachable at default settings for most stages. For example,
+  Early Bloom defaulted to a night VPD target of 1.25 kPa — the same as day —
+  while the tent at 21°C / 41% RH naturally sits around 1.25 kPa, meaning the
+  default was accurate for day but left no room for the lower night temperature
+  to bring VPD into band. This directly caused the misleadingly low in-band %
+  figures observed in the first session after the v0.1.80 fix.
+
+  `STAGE_NIGHT_TARGET_VPD_KPA` is now set to realistic lower values (0.50–1.00
+  kPa depending on stage). `STAGE_NIGHT_TARGET_RH` is recalculated to be
+  internally consistent with the new VPD targets at the existing night
+  temperatures using a -1.5°C leaf offset, so the night target conflict
+  checker shows ✅ at default settings.
+
+  These defaults only affect new installs and stage-change resets. Existing
+  users who have already set their night VPD and RH targets are unaffected.
+
+### Removed
+
+- **`Examples/dashboard_suggestion.yaml`** — removed. This file was a
+  significantly outdated second dashboard example missing the VPD in-band card,
+  the Out of Band card, the Performance section, and the notes display limit.
+  `Examples/dashboard.yaml` is the single reference example going forward.
+- **`Examples/dashboard.yaml.bak`** — stray backup file removed from repo.
+
 ## [0.1.80] - 2026-04-19
+ - 2026-04-19
 
 ### Fixed
 
