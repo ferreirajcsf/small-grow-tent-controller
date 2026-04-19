@@ -2476,7 +2476,16 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         now   = self._now()
 
         vpd           = data.get("vpd_kpa")
-        vpd_target    = data.get("vpd_target_kpa") or data.get("night_vpd_target_kpa", 1.0)
+        # Use day or night VPD target depending on current period.
+        # Previously this always fell through to the day target because
+        # vpd_target_kpa is always set, so night in-band % was calculated
+        # against the wrong target.
+        _is_day       = data.get("is_day", True)
+        vpd_target    = (
+            float(data.get("vpd_target_kpa", 1.0))
+            if _is_day
+            else float(data.get("night_vpd_target_kpa", 1.0))
+        )
         deadband      = float(data.get("vpd_deadband_kpa", 0.07))
         sensors_ok    = vpd is not None and data.get("avg_temp_c") is not None
         control_mode  = data.get("control_mode", "init")

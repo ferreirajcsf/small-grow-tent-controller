@@ -1,4 +1,18 @@
+## [0.1.80] - 2026-04-19
+
+### Fixed
+
+- **VPD in-band % always used the day target, even at night.** The in-band
+  performance tracking read `vpd_target_kpa` (day target) first and only fell
+  back to `night_vpd_target_kpa` if the day value was falsy. Since the day
+  target is always set, the night target was never used. This meant the 24-hour
+  rolling in-band % was calculated against the wrong target throughout the
+  night period, producing misleadingly low figures when the night VPD target
+  differs from the day target. Fixed to check `is_day` and select the
+  appropriate target for each poll.
+
 ## [0.1.79] - 2026-04-17
+ - 2026-04-17
 
 ### Added
 
