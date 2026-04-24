@@ -2480,7 +2480,7 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         # Previously this always fell through to the day target because
         # vpd_target_kpa is always set, so night in-band % was calculated
         # against the wrong target.
-        _is_day       = data.get("is_day", True)
+        _is_day       = data.get("debug_is_day", True)
         vpd_target    = (
             float(data.get("vpd_target_kpa", 1.0))
             if _is_day

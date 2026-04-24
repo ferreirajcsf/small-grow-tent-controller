@@ -1,4 +1,18 @@
+## [0.1.82] - 2026-04-19
+
+### Fixed
+
+- **VPD in-band and Out of Band calculations still used the day target at
+  night**, despite the v0.1.80 fix intending to correct this. The fix read
+  `data.get("is_day", True)` but the key written into the data dict is
+  `"debug_is_day"`. Because the key was never found, `data.get()` always
+  returned the default `True`, so both the in-band % and the out-of-band
+  streak counter continued to check VPD against the day target every cycle —
+  even at night. Fixed to use the correct key `"debug_is_day"`. This is the
+  actual fix for the issue v0.1.80 attempted to resolve.
+
 ## [0.1.81] - 2026-04-19
+ - 2026-04-19
 
 ### Fixed
 
