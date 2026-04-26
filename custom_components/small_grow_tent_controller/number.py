@@ -48,9 +48,9 @@ NUMBERS = [
     # Sensor anomaly filter
     ("anomaly_max_delta_temp_c","Anomaly Max Temp Delta",        0.5, 10.0,  0.5,  3.0,   "°C"),
     ("anomaly_max_delta_rh",    "Anomaly Max RH Delta",          1.0, 30.0,  1.0,  10.0,  "%"),
-    ("night_vpd_target_kpa",    "Night VPD Target",             0.40, 2.50,  0.01, 1.00,  "kPa"),
+    ("night_vpd_target_kpa",    "Night VPD Target",             0.40, 2.50,  0.01, 0.70,  "kPa"),  # Early Vegetative default
     ("night_target_temp_c",     "Night Target Temperature",     10.0, 35.0,  0.1,  20.0,  "°C"),
-    ("night_target_rh",         "Night Target Humidity",        10.0, 95.0,  0.5,  55.0,  "%"),
+    ("night_target_rh",         "Night Target Humidity",        10.0, 95.0,  0.5,  61.1,  "%"),  # Early Vegetative default
     ("temp_ramp_rate_c_per_min","Temp Ramp Rate",               0.0,  5.0,   0.1,  1.0,   "°C/min"),
     # MPC model parameters
     ("mpc_horizon_steps",       "MPC Horizon Steps",            1,    6,     1,    3,     "steps"),

@@ -44,16 +44,29 @@ All devices are optional — only enable what you actually have:
 
 Switch between stages and the controller automatically adjusts its VPD, temperature, and humidity targets:
 
-| Stage | Default VPD | Default Temp | Default RH | Adjustable? |
-|---|---|---|---|---|
-| Seedling | 0.70 kPa | 24°C | 70% | ✅ Yes |
-| Early Vegetative | 0.95 kPa | 25°C | 60% | ✅ Yes |
-| Late Vegetative | 1.10 kPa | 26°C | 55% | ✅ Yes |
-| Early Bloom | 1.25 kPa | 26°C | 50% | ✅ Yes |
-| Late Bloom | 1.45 kPa | 25°C | 45% | ✅ Yes |
-| Drying | 0.90 kPa | 21°C | 55% | ✅ Yes |
+**Day targets** (lights-on window):
 
-All three target values (VPD, temperature, RH) reset to their stage defaults when you change stage (~10 second delay). Each can be nudged freely at any time.
+| Stage | Default VPD | Default Temp | Default RH |
+|---|---|---|---|
+| Seedling | 0.70 kPa | 24°C | 70% |
+| Early Vegetative | 0.95 kPa | 25°C | 60% |
+| Late Vegetative | 1.10 kPa | 26°C | 55% |
+| Early Bloom | 1.25 kPa | 26°C | 50% |
+| Late Bloom | 1.45 kPa | 25°C | 45% |
+| Drying | 0.90 kPa | 21°C | 55% |
+
+**Night targets** (lights-off window) — intentionally lower VPD and higher RH than day, calculated for internal consistency at the night temperature using a −1.5°C leaf offset:
+
+| Stage | Night VPD | Night Temp | Night RH |
+|---|---|---|---|
+| Seedling | 0.50 kPa | 19°C | 68.3% |
+| Early Vegetative | 0.70 kPa | 20°C | 61.1% |
+| Late Vegetative | 0.80 kPa | 21°C | 59.0% |
+| Early Bloom | 0.85 kPa | 21°C | 57.0% |
+| Late Bloom | 1.00 kPa | 20°C | 48.3% |
+| Drying | 0.70 kPa | 16°C | 52.3% |
+
+All six target values (day VPD, day temp, day RH, night VPD, night temp, night RH) reset to their stage defaults when you change stage (~10 second delay). Each can be nudged freely at any time.
 
 **Night mode options**
 
@@ -97,6 +110,11 @@ When enabled, the controller continuously adapts the MPC model parameters from l
 
 > **When to use RLS:** Only enable it when the heater is actively cycling on and off during the period you want RLS to learn from. RLS needs to observe both heater ON and heater OFF transitions to correctly identify `a_heater`. If the heater never fires (e.g. during summer months when the tent is warm enough without it), RLS gets no signal for the heater coefficient and the forgetting factor will slowly wash all parameters toward zero over days or weeks — causing MPC to make progressively worse decisions. In this case, leave RLS off and re-identify the model manually when conditions change.
 
+**VPD performance tracking**
+- **VPD % In Target Band** — 24-hour rolling percentage of poll cycles where VPD was within the deadband of the current target. Uses the day VPD target during the lights-on period and the night VPD target during the lights-off period.
+- **VPD Out of Band Duration** — live counter showing how long VPD has been continuously outside the deadband. Resets to zero the moment VPD re-enters the band. Displays in seconds, minutes, hours, days, or weeks depending on duration. Also uses the correct day/night target for the current period.
+- **VPD Band Data Window** — how many hours of data are in the rolling window (climbs to 24h and stays there).
+
 **Grow Journal**
 - Built-in timestamped grow log — record observations, training events, nutrient changes, anything
 - Notes persist across restarts in HA's `.storage` directory
@@ -132,7 +150,7 @@ Use the **Return All Devices to Auto** button to hand everything back to the con
 **Entities created automatically**
 
 Once set up, the integration creates a full set of entities grouped under a single device in your HA UI:
-- **Sensors:** average temperature, humidity, VPD, dew point, leaf temperature, leaf temp offset, control mode, last action, target VPD (implied), target conflict %, implied RH for target VPD, Grow Journal (note count)
+- **Sensors:** average temperature, humidity, VPD, dew point, leaf temperature, leaf temp offset, control mode, last action, target VPD (implied), target conflict %, implied RH for target VPD, VPD % In Target Band (24h rolling), VPD Out-of-Band Duration (live streak counter), VPD Band Data Window, device toggle counters (heater, exhaust, humidifier, dehumidifier), Grow Journal (note count)
 - **Binary sensors:** sensors unavailable (problem indicator), disturbance hold active (status indicator), plus one "Use X Control" flag for each configured device
 - **Switches:** controller on/off, VPD Chase, exhaust safety override, RLS adaptation, MPC auto-identify weekly, trigger disturbance hold (manual)
 - **Number sliders:** all limits, targets, deadbands, hold times, leaf temp offset, MPC model parameters, MPC cost weights, MPC identification days, RLS forgetting factor, weather blend
@@ -210,7 +228,7 @@ Once the integration is running, tune it from the entity controls in your dashbo
 | **Night Mode** | Controls night-time strategy: Dew Protection (default), VPD Chase, VPD Chase (No Heater), or MPC |
 | **Night VPD Target** | VPD target used during the light-off window — auto-resets on stage change |
 | **Night Target Temperature** | Temperature target during the light-off window — defaults to day temp − 5°C |
-| **Night Target Humidity** | RH target during the light-off window — auto-calculated for rough congruence with night temp + night VPD |
+| **Night Target Humidity** | RH target during the light-off window — resets to the stage night RH default on stage change, calculated for congruence with the night VPD target at night temperature using a −1.5°C leaf offset |
 | **Leaf Temp Offset** | Offset applied to average air temperature to estimate leaf temperature for VPD calculation. Default −1.5°C (leaf runs cooler than air due to transpiration). |
 | **Temp Ramp Rate** | Maximum rate of change for the effective temperature target (°C/min). Prevents abrupt jumps at day/night transitions. 0 = disabled (default 1.0) |
 | **MPC Horizon Steps** | How many steps ahead the MPC plans (1–6, default 3). Higher = more lookahead but exponentially more computation. |

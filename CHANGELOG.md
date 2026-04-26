@@ -1,4 +1,34 @@
+## [0.1.83] - 2026-04-19
+
+### Fixed
+
+- **`number.py` NUMBERS tuple defaults did not match `const.py` stage defaults for night
+  targets.** The v0.1.81 fix corrected `STAGE_NIGHT_TARGET_VPD_KPA` and
+  `STAGE_NIGHT_TARGET_RH` in `const.py`, but the `NUMBERS` tuple in `number.py` has
+  its own hardcoded defaults used when no saved value exists (i.e. on the very first
+  install, before any stage change is triggered). These were still set to 1.00 kPa and
+  55% respectively, while `const.py` defaults for `DEFAULT_STAGE = "Early Vegetative"`
+  are now 0.70 kPa and 61.1%. Aligned the NUMBERS defaults to match — new installs now
+  get consistent night targets from the start without needing to trigger a stage change.
+
+### Changed
+
+- **README** — four updates:
+  - Stage preset table split into separate day and night sections, showing the night VPD,
+    temperature, and RH defaults for each stage explicitly. Previously only day targets
+    were documented and night defaults were invisible to the reader.
+  - **Night Target Humidity** description in the settings table updated to reflect that it
+    resets to a stage-calculated default on stage change, rather than the previous
+    vague "auto-calculated for rough congruence" wording.
+  - New **VPD performance tracking** feature section added, explaining the VPD % In Target
+    Band, Out of Band Duration, and Band Data Window sensors. Documents that both use the
+    correct day/night target for the current period (this was the fix introduced in v0.1.82).
+  - Sensors list in the entities section updated to include VPD tracking sensors (in-band %,
+    out-of-band duration, band data window) and device toggle counters — these entities
+    existed but were not listed in the README.
+
 ## [0.1.82] - 2026-04-19
+ - 2026-04-19
 
 ### Fixed
 
