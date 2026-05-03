@@ -207,14 +207,14 @@ views:
                       {% set pct = states('sensor.small_grow_tent_controller_vpd_in_target_band') | float(-1) %}
                       {% if pct < 0 %} Collecting data…
                       {% elif pct >= 90 %} 🟢 {{ pct }}% — excellent
-                      {% elif pct >= 70 %} 🟡 {{ pct }}% — good
-                      {% elif pct >= 50 %} 🟠 {{ pct }}% — fair
+                      {% elif pct >= 70 %} 🟢 {{ pct }}% — good
+                      {% elif pct >= 50 %} 🟡 {{ pct }}% — fair
                       {% else %} 🔴 {{ pct }}% — needs attention
                       {% endif %}
                     icon: mdi:bullseye-arrow
                     icon_color: >
                       {% set pct = states('sensor.small_grow_tent_controller_vpd_in_target_band') | float(-1) %}
-                      {% if pct >= 90 %} green {% elif pct >= 70 %} amber {% elif pct < 0 %} grey {% else %} red {% endif %}
+                      {% if pct >= 70 %} green {% elif pct >= 50 %} amber {% elif pct < 0 %} grey {% else %} red {% endif %}
                     fill_container: true
                     tap_action:
                       action: more-info
@@ -226,7 +226,7 @@ views:
                       style: |
                         :host {
                           --bar-pct: {{ [states('sensor.small_grow_tent_controller_vpd_in_target_band') | float(0), 2] | max }}%;
-                          --bar-color: {% set pct = states('sensor.small_grow_tent_controller_vpd_in_target_band') | float(-1) %}{% if pct >= 90 %}#22c55e{% elif pct >= 70 %}#f59e0b{% elif pct < 0 %}#9ca3af{% else %}#ef4444{% endif %};
+                          --bar-color: {% set pct = states('sensor.small_grow_tent_controller_vpd_in_target_band') | float(-1) %}{% if pct >= 70 %}#22c55e{% elif pct >= 50 %}#f59e0b{% elif pct < 0 %}#9ca3af{% else %}#ef4444{% endif %};
                         }
                         ha-card { overflow: hidden; }
                         ha-card::after {

@@ -1,3 +1,17 @@
+## [0.1.84] - 2026-05-03
+
+### Changed
+
+- **`Examples/dashboard.yaml` — VPD In Band card colour thresholds corrected.**
+  The "good" label (≥70%) was showing amber despite the text saying "good".
+  Colour thresholds now match the label text:
+  - ≥ 70% → green (good or excellent)
+  - ≥ 50% → amber (fair)
+  - < 50% → red (needs attention)
+
+  Applied consistently across the icon colour, the progress bar colour, and the
+  secondary text emoji.
+
 ## [0.1.83] - 2026-04-19
 
 ### Fixed
