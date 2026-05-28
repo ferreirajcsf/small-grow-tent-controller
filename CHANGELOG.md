@@ -1,3 +1,54 @@
+## [0.1.86] - 2026-05-28
+
+### Changed
+
+- **Drying stage now uses a single set of objectives — no day/night split.**
+  Since the light is always off during drying, there is no meaningful day/night
+  boundary. Previously the coordinator held separate day and night targets for
+  the Drying stage (night defaults were 16 °C / 52.3 % RH / 0.70 kPa, well
+  below the day values of 21 °C / 55 % RH / 0.90 kPa), which could cause the
+  environment to silently drift between two different set-points over a 24-hour
+  cycle despite conditions being identical around the clock.
+
+  Two layers of enforcement now guarantee a single consistent objective:
+
+  1. **Stage-reset** — when you switch to the Drying stage, the night target
+     sliders (Night VPD Target, Night Target Temperature, Night Target Humidity)
+     are automatically written with the same values as the day targets
+     (0.90 kPa / 21 °C / 55 % RH). The UI stays in sync from the moment of
+     stage selection.
+
+  2. **Runtime override** — at every control cycle the coordinator populates
+     the night target context fields from the day target values when the active
+     stage is Drying, so even if a night slider is manually adjusted the day
+     targets always take precedence. The override is unconditional and silent.
+
+- **`const.py`** — `STAGE_NIGHT_TARGET_TEMP_C`, `STAGE_NIGHT_TARGET_VPD_KPA`,
+  and `STAGE_NIGHT_TARGET_RH` for `"Drying"` updated to match day defaults
+  (21 °C, 0.90 kPa, 55 % RH). Previously they were 16 °C, 0.70 kPa, 52.3 %.
+
+- **`coordinator.py`** — `_reset_stage_targets` now branches on stage:
+  for Drying it writes the day values into the night slots; for all other
+  stages the existing night-default lookup is unchanged.
+
+- **`coordinator.py`** — `_Ctx` build in `_apply_control` gains a runtime
+  guard: when `drying=True`, `night_vpd_target`, `night_target_temp`, and
+  `night_target_rh` are sourced from the day target data keys instead of the
+  night target data keys.
+
+- **`README.md`** — night targets table updated (Drying row now shows day
+  values with `*(= day)*` annotation); Drying mode section rewritten to
+  document the single-objective behaviour.
+
+### No Breaking Changes
+
+No config entries, entity IDs, or stored states are affected. On the next
+stage-change event (or manual Drying re-select), the night sliders are
+reconciled to the day values. Until then the runtime override ensures the
+correct targets are in use regardless.
+
+---
+
 ## [0.1.85] - 2026-05-09
 
 ### Changed

@@ -1,5 +1,5 @@
 DOMAIN = "small_grow_tent_controller"
-VERSION = "0.1.85"
+VERSION = "0.1.86"
 
 PLATFORMS = ["sensor", "switch", "select", "number", "time", "binary_sensor", "button"]
 
@@ -126,27 +126,30 @@ DAY_MODE_MPC        = "MPC"
 DAY_MODE_LIMITS     = "Limits Only"
 DAY_MODE_OPTIONS    = [DAY_MODE_VPD, DAY_MODE_MPC, DAY_MODE_LIMITS]
 
-# Night target defaults per stage (temp = day - 5°C, RH auto-computed for same VPD)
+# Night target defaults per stage (temp = day - 5°C, RH auto-computed for same VPD).
+# Drying has no lights-off window, so its night targets mirror the day targets exactly;
+# the coordinator enforces this at runtime regardless of what the sliders are set to.
 STAGE_NIGHT_TARGET_TEMP_C = {
     "Seedling":          19.0,
     "Early Vegetative":  20.0,
     "Late Vegetative":   21.0,
     "Early Bloom":       21.0,
     "Late Bloom":        20.0,
-    "Drying":            16.0,
+    "Drying":            21.0,  # mirrors day — no day/night split during drying
 }
 
 # Night VPD targets are intentionally lower than day targets — the tent is
 # cooler and plants are not transpiring at full rate during the dark period.
 # Values are derived from STAGE_NIGHT_TARGET_TEMP_C + STAGE_NIGHT_TARGET_RH
 # so they are internally consistent with the other night defaults.
+# Drying mirrors the day target: there is no light schedule and a single objective applies.
 STAGE_NIGHT_TARGET_VPD_KPA = {
     "Seedling":          0.50,
     "Early Vegetative":  0.70,
     "Late Vegetative":   0.80,
     "Early Bloom":       0.85,
     "Late Bloom":        1.00,
-    "Drying":            0.70,
+    "Drying":            0.90,  # mirrors day — no day/night split during drying
 }
 
 # Night RH defaults are calculated to be consistent with STAGE_NIGHT_TARGET_VPD_KPA
@@ -154,13 +157,14 @@ STAGE_NIGHT_TARGET_VPD_KPA = {
 # Formula: RH = (SVP_leaf - VPD_target) / SVP_air * 100
 # Previously these were identical to the day RH defaults, which implied the same
 # VPD as day — making the night VPD target effectively unreachable at default settings.
+# Drying mirrors the day target: there is no light schedule and a single objective applies.
 STAGE_NIGHT_TARGET_RH = {
     "Seedling":          68.3,
     "Early Vegetative":  61.1,
     "Late Vegetative":   59.0,
     "Early Bloom":       57.0,
     "Late Bloom":        48.3,
-    "Drying":            52.3,
+    "Drying":            55.0,  # mirrors day — no day/night split during drying
 }
 
 # Exhaust mode extended options (day/night schedule awareness)

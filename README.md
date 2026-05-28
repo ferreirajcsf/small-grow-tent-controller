@@ -55,7 +55,7 @@ Switch between stages and the controller automatically adjusts its VPD, temperat
 | Late Bloom | 1.45 kPa | 25°C | 45% |
 | Drying | 0.90 kPa | 21°C | 55% |
 
-**Night targets** (lights-off window) — intentionally lower VPD and higher RH than day, calculated for internal consistency at the night temperature using a −1.5°C leaf offset:
+**Night targets** (lights-off window) — intentionally lower VPD and higher RH than day, calculated for internal consistency at the night temperature using a −1.5°C leaf offset. The **Drying** stage has no lights-off window, so its night targets mirror the day targets exactly:
 
 | Stage | Night VPD | Night Temp | Night RH |
 |---|---|---|---|
@@ -64,7 +64,7 @@ Switch between stages and the controller automatically adjusts its VPD, temperat
 | Late Vegetative | 0.80 kPa | 21°C | 59.0% |
 | Early Bloom | 0.85 kPa | 21°C | 57.0% |
 | Late Bloom | 1.00 kPa | 20°C | 48.3% |
-| Drying | 0.70 kPa | 16°C | 52.3% |
+| Drying | 0.90 kPa *(= day)* | 21°C *(= day)* | 55% *(= day)* |
 
 All six target values (day VPD, day temp, day RH, night VPD, night temp, night RH) reset to their stage defaults when you change stage (~10 second delay). Each can be nudged freely at any time.
 
@@ -267,7 +267,7 @@ For the exhaust fan, if the manual mode is Off but the **Exhaust Safety** is ena
 If the controller switch is off, automatic control stops. Manual overrides (On/Off modes) still work, but Auto devices are left alone. The exhaust safety still applies even in the disabled state.
 
 ### 3. Drying mode
-When the stage is set to **Drying**, lights are always off and the controller enforces only hard temperature and humidity limits — no VPD chasing.
+When the stage is set to **Drying**, the light is always off and the controller operates with a **single set of objectives around the clock** — there is no day/night split. The night target sliders (Night VPD Target, Night Target Temperature, Night Target Humidity) are automatically reset to match the day targets when you select the Drying stage, and at runtime the coordinator always reads the day targets regardless of the time of day. Only hard temperature and humidity limits are enforced; VPD chasing is inactive during drying.
 
 ### 4. Sensor safety shutoff
 If sensors become unavailable mid-cycle and the heater is currently on, it is immediately turned off as a safety measure. The controller enters `waiting_for_sensors` mode and takes no further action until all sensors report valid readings again.

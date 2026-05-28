@@ -2195,9 +2195,22 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
             exhaust_safety_max_rh   = float(data.get("exhaust_safety_max_rh",     75.0)),
             heater_max_run_s   = float(data.get("heater_max_run_s", 0.0) or 0.0),
             night_mode         = data.get("night_mode", "Dew Protection"),
-            night_vpd_target   = float(data.get("night_vpd_target_kpa", 1.00)),
-            night_target_temp  = float(data.get("night_target_temp_c",  20.0)),
-            night_target_rh    = float(data.get("night_target_rh",      55.0)),
+            # During drying there is no light schedule — a single set of objectives
+            # applies around the clock.  Override the night target fields with the
+            # day target values so the controller never diverges between periods,
+            # even if the night sliders were adjusted while in a different stage.
+            night_vpd_target   = (
+                float(data.get("vpd_target_kpa",  1.00)) if drying
+                else float(data.get("night_vpd_target_kpa", 1.00))
+            ),
+            night_target_temp  = (
+                float(data.get("target_temp_c",   20.0)) if drying
+                else float(data.get("night_target_temp_c",  20.0))
+            ),
+            night_target_rh    = (
+                float(data.get("target_rh",       55.0)) if drying
+                else float(data.get("night_target_rh",      55.0))
+            ),
             temp_ramp_rate     = float(data.get("temp_ramp_rate_c_per_min", 1.0)),
             day_mode           = data.get("day_mode", "VPD Chase"),
             mpc_horizon        = int(data.get("mpc_horizon_steps", 3)),
@@ -2419,14 +2432,29 @@ class GrowTentCoordinator(DataUpdateCoordinator[dict[str, Any]]):
         Uses the entity registry and number.set_value service calls instead of
         the deprecated hass.data["entity_components"] internal API, which is
         unreliable across HA versions and may return None silently.
+
+        For the Drying stage, night targets are set equal to the day targets so
+        the UI reflects the single-objective nature of drying (no day/night split).
         """
+        day_vpd  = STAGE_TARGET_VPD_KPA.get(stage, 1.00)
+        day_temp = STAGE_TARGET_TEMP_C.get(stage, 25.0)
+        day_rh   = STAGE_TARGET_RH.get(stage, 55.0)
+
+        if stage == "Drying":
+            # No light schedule during drying — one set of objectives around the clock.
+            night_vpd, night_temp, night_rh = day_vpd, day_temp, day_rh
+        else:
+            night_vpd  = STAGE_NIGHT_TARGET_VPD_KPA.get(stage, 1.00)
+            night_temp = STAGE_NIGHT_TARGET_TEMP_C.get(stage, 20.0)
+            night_rh   = STAGE_NIGHT_TARGET_RH.get(stage, 55.0)
+
         targets = {
-            f"{self.entry.entry_id}_vpd_target_kpa":      STAGE_TARGET_VPD_KPA.get(stage, 1.00),
-            f"{self.entry.entry_id}_target_temp_c":       STAGE_TARGET_TEMP_C.get(stage, 25.0),
-            f"{self.entry.entry_id}_target_rh":           STAGE_TARGET_RH.get(stage, 55.0),
-            f"{self.entry.entry_id}_night_vpd_target_kpa": STAGE_NIGHT_TARGET_VPD_KPA.get(stage, 1.00),
-            f"{self.entry.entry_id}_night_target_temp_c":  STAGE_NIGHT_TARGET_TEMP_C.get(stage, 20.0),
-            f"{self.entry.entry_id}_night_target_rh":      STAGE_NIGHT_TARGET_RH.get(stage, 55.0),
+            f"{self.entry.entry_id}_vpd_target_kpa":       day_vpd,
+            f"{self.entry.entry_id}_target_temp_c":        day_temp,
+            f"{self.entry.entry_id}_target_rh":            day_rh,
+            f"{self.entry.entry_id}_night_vpd_target_kpa": night_vpd,
+            f"{self.entry.entry_id}_night_target_temp_c":  night_temp,
+            f"{self.entry.entry_id}_night_target_rh":      night_rh,
         }
 
         registry = er.async_get(self.hass)
